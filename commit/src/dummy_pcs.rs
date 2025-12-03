@@ -203,12 +203,21 @@ mod tests {
     use super::*;
     use alloc::vec;
     use p3_bn254::Bn254;
+    use p3_challenger::CanSample;
     use p3_field::PrimeCharacteristicRing;
     use p3_field::coset::TwoAdicMultiplicativeCoset;
     use p3_matrix::dense::RowMajorMatrix;
 
     // Use Bn254 field for testing
     type TestVal = Bn254;
+
+    // Dummy challenger that satisfies trait bounds but does nothing
+    struct DummyChallenger;
+    impl CanSample<Bn254> for DummyChallenger {
+        fn sample(&mut self) -> Bn254 {
+            Bn254::ZERO
+        }
+    }
 
     #[test]
     fn test_dummy_pcs_commit_and_open() {
@@ -233,7 +242,9 @@ mod tests {
         let evals = RowMajorMatrix::new(values, 2);
 
         // Commit to the polynomial
-        let (commitment, prover_data) = pcs.commit(vec![(domain, evals.clone())]);
+        // Use trait explicitly with Bn254 as Challenge
+        let (commitment, _prover_data) =
+            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(&pcs, vec![(domain, evals.clone())]);
 
         // Verify the commitment contains the evaluations
         assert_eq!(commitment.len(), 1);
@@ -270,7 +281,8 @@ mod tests {
         );
 
         // Commit to both
-        let (commitment, _prover_data) = pcs.commit(vec![(domain1, evals1), (domain2, evals2)]);
+        let (commitment, _prover_data) =
+            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(&pcs, vec![(domain1, evals1), (domain2, evals2)]);
 
         assert_eq!(commitment.len(), 2);
         assert_eq!(commitment[0].height(), 4);
@@ -287,10 +299,12 @@ mod tests {
             1,
         );
 
-        let (_, prover_data) = pcs.commit(vec![(domain, evals.clone())]);
+        let (_, prover_data) =
+            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(&pcs, vec![(domain, evals.clone())]);
 
         // Get evaluations on the same domain
-        let retrieved_evals = pcs.get_evaluations_on_domain(&prover_data, 0, domain);
+        let retrieved_evals =
+            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::get_evaluations_on_domain(&pcs, &prover_data, 0, domain);
 
         assert_eq!(retrieved_evals.height(), evals.height());
         assert_eq!(retrieved_evals.width(), evals.width());
