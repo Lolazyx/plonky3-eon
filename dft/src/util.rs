@@ -39,12 +39,12 @@ pub(crate) fn coset_shift_cols<F: Field>(mat: &mut RowMajorMatrix<F>, shift: F) 
 mod tests {
     use alloc::vec;
 
-    use p3_baby_bear::BabyBear;
+    use p3_bn254::Bn254;
     use p3_matrix::dense::RowMajorMatrix;
 
     use super::*;
 
-    type F = BabyBear;
+    type F = Bn254;
 
     #[test]
     fn test_divide_by_height_2x2() {

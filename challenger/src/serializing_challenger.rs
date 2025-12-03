@@ -8,7 +8,7 @@ use p3_util::log2_ceil_u64;
 use tracing::instrument;
 
 use crate::{
-    CanObserve, CanSample, CanSampleBits, FieldChallenger, GrindingChallenger, HashChallenger
+    CanObserve, CanSample, CanSampleBits, FieldChallenger, GrindingChallenger, HashChallenger,
 };
 
 /// Given a challenger that can observe and sample bytes, produces a challenger that is able to
