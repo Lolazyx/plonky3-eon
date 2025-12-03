@@ -158,7 +158,8 @@ mod tests {
     use alloc::vec::Vec;
 
     use itertools::Itertools;
-    use p3_baby_bear::BabyBear;
+    use p3_bn254::Bn254;
+    // use p3_baby_bear::Bn254;
     use p3_field::FieldArray;
 
     use super::*;
@@ -279,18 +280,18 @@ mod tests {
     #[test]
     fn test_horizontally_packed_row() {
         // Define the packed type with width 2
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
-        // Create an inner matrix of BabyBear elements.
+        // Create an inner matrix of Bn254 elements.
         // Matrix layout:
         // [ 1  2 ]
         // [ 3  4 ]
         let inner = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
             ],
             2,
         );
@@ -310,7 +311,7 @@ mod tests {
         // Check the packed row values match reversed second row.
         assert_eq!(
             packed,
-            &[Packed::from([BabyBear::new(3), BabyBear::new(4)])]
+            &[Packed::from([Bn254::new(3), Bn254::new(4)])]
         );
 
         // Check there are no suffix leftovers.
@@ -320,17 +321,17 @@ mod tests {
     #[test]
     fn test_padded_horizontally_packed_row() {
         // Define a packed type with width 3
-        type Packed = FieldArray<BabyBear, 3>;
+        type Packed = FieldArray<Bn254, 3>;
 
-        // Create a 2x2 matrix of BabyBear elements:
+        // Create a 2x2 matrix of Bn254 elements:
         // [ 1  2 ]
         // [ 3  4 ]
         let inner = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
             ],
             2,
         );
@@ -350,9 +351,9 @@ mod tests {
         assert_eq!(
             packed,
             vec![Packed::from([
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(0),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(0),
             ])]
         );
     }

@@ -590,7 +590,7 @@ impl<'a, T: Clone + Default + Send + Sync> RowMajorMatrixView<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use p3_baby_bear::BabyBear;
+    use p3_bn254::Bn254;
     use p3_field::FieldArray;
 
     use super::*;
@@ -724,10 +724,10 @@ mod tests {
     fn test_bit_reversed_zero_pad() {
         let matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
             ],
             2,
         );
@@ -736,14 +736,14 @@ mod tests {
         assert_eq!(
             padded.values,
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(0),
-                BabyBear::new(0),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(0),
-                BabyBear::new(0)
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(0),
+                Bn254::new(0),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(0),
+                Bn254::new(0)
             ]
         );
     }
@@ -752,10 +752,10 @@ mod tests {
     fn test_bit_reversed_zero_pad_no_change() {
         let matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
             ],
             2,
         );
@@ -765,10 +765,10 @@ mod tests {
         assert_eq!(
             padded.values,
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
             ]
         );
     }
@@ -777,25 +777,25 @@ mod tests {
     fn test_scale() {
         let mut matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
-                BabyBear::new(6),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
+                Bn254::new(6),
             ],
             2,
         );
-        matrix.scale(BabyBear::new(2));
+        matrix.scale(Bn254::new(2));
         assert_eq!(
             matrix.values,
             vec![
-                BabyBear::new(2),
-                BabyBear::new(4),
-                BabyBear::new(6),
-                BabyBear::new(8),
-                BabyBear::new(10),
-                BabyBear::new(12)
+                Bn254::new(2),
+                Bn254::new(4),
+                Bn254::new(6),
+                Bn254::new(8),
+                Bn254::new(10),
+                Bn254::new(12)
             ]
         );
     }
@@ -804,25 +804,25 @@ mod tests {
     fn test_scale_row() {
         let mut matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
-                BabyBear::new(6),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
+                Bn254::new(6),
             ],
             2,
         );
-        matrix.scale_row(1, BabyBear::new(3));
+        matrix.scale_row(1, Bn254::new(3));
         assert_eq!(
             matrix.values,
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(9),
-                BabyBear::new(12),
-                BabyBear::new(5),
-                BabyBear::new(6),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(9),
+                Bn254::new(12),
+                Bn254::new(5),
+                Bn254::new(6),
             ]
         );
     }
@@ -840,16 +840,16 @@ mod tests {
 
     #[test]
     fn test_horizontally_packed_row() {
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
         let matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
-                BabyBear::new(6),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
+                Bn254::new(6),
             ],
             3,
         );
@@ -861,25 +861,25 @@ mod tests {
 
         assert_eq!(
             packed,
-            vec![Packed::from([BabyBear::new(4), BabyBear::new(5)])]
+            vec![Packed::from([Bn254::new(4), Bn254::new(5)])]
         );
-        assert_eq!(suffix, vec![BabyBear::new(6)]);
+        assert_eq!(suffix, vec![Bn254::new(6)]);
     }
 
     #[test]
     fn test_padded_horizontally_packed_row() {
-        use p3_baby_bear::BabyBear;
+        use p3_bn254::Bn254;
 
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
         let matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
-                BabyBear::new(6),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
+                Bn254::new(6),
             ],
             3,
         );
@@ -890,8 +890,8 @@ mod tests {
         assert_eq!(
             packed,
             vec![
-                Packed::from([BabyBear::new(4), BabyBear::new(5)]),
-                Packed::from([BabyBear::new(6), BabyBear::new(0)])
+                Packed::from([Bn254::new(4), Bn254::new(5)]),
+                Packed::from([Bn254::new(6), Bn254::new(0)])
             ]
         );
     }
@@ -942,57 +942,57 @@ mod tests {
     fn test_flatten_to_base() {
         let matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
             ],
             2,
         );
 
-        let flattened: RowMajorMatrix<BabyBear> = matrix.flatten_to_base();
+        let flattened: RowMajorMatrix<Bn254> = matrix.flatten_to_base();
 
         assert_eq!(flattened.width, 2);
         assert_eq!(
             flattened.values,
             vec![
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
             ]
         );
     }
 
     #[test]
     fn test_horizontally_packed_row_mut() {
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
         let mut matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
-                BabyBear::new(6),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
+                Bn254::new(6),
             ],
             3,
         );
 
         let (packed, suffix) = matrix.horizontally_packed_row_mut::<Packed>(1);
-        packed[0] = Packed::from([BabyBear::new(9), BabyBear::new(10)]);
-        suffix[0] = BabyBear::new(11);
+        packed[0] = Packed::from([Bn254::new(9), Bn254::new(10)]);
+        suffix[0] = Bn254::new(11);
 
         assert_eq!(
             matrix.values,
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(9),
-                BabyBear::new(10),
-                BabyBear::new(11),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(9),
+                Bn254::new(10),
+                Bn254::new(11),
             ]
         );
     }
@@ -1066,35 +1066,35 @@ mod tests {
 
     #[test]
     fn test_packed_row_pair_mut() {
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
         let mut matrix = RowMajorMatrix::new(
             vec![
-                BabyBear::new(1),
-                BabyBear::new(2),
-                BabyBear::new(3),
-                BabyBear::new(4),
-                BabyBear::new(5),
-                BabyBear::new(6),
+                Bn254::new(1),
+                Bn254::new(2),
+                Bn254::new(3),
+                Bn254::new(4),
+                Bn254::new(5),
+                Bn254::new(6),
             ],
             3,
         );
 
         let ((packed1, sfx1), (packed2, sfx2)) = matrix.packed_row_pair_mut::<Packed>(0, 1);
-        packed1[0] = Packed::from([BabyBear::new(7), BabyBear::new(8)]);
-        packed2[0] = Packed::from([BabyBear::new(33), BabyBear::new(44)]);
-        sfx1[0] = BabyBear::new(99);
-        sfx2[0] = BabyBear::new(9);
+        packed1[0] = Packed::from([Bn254::new(7), Bn254::new(8)]);
+        packed2[0] = Packed::from([Bn254::new(33), Bn254::new(44)]);
+        sfx1[0] = Bn254::new(99);
+        sfx2[0] = Bn254::new(9);
 
         assert_eq!(
             matrix.values,
             vec![
-                BabyBear::new(7),
-                BabyBear::new(8),
-                BabyBear::new(99),
-                BabyBear::new(33),
-                BabyBear::new(44),
-                BabyBear::new(9),
+                Bn254::new(7),
+                Bn254::new(8),
+                Bn254::new(99),
+                Bn254::new(33),
+                Bn254::new(44),
+                Bn254::new(9),
             ]
         );
     }
@@ -1196,9 +1196,9 @@ mod tests {
 
     #[test]
     fn test_vertically_packed_row_pair() {
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
-        let matrix = RowMajorMatrix::new((1..17).map(BabyBear::new).collect::<Vec<_>>(), 4);
+        let matrix = RowMajorMatrix::new((1..17).map(Bn254::new).collect::<Vec<_>>(), 4);
 
         // Calling the function with r = 0 and step = 2
         let packed = matrix.vertically_packed_row_pair::<Packed>(0, 2);
@@ -1222,16 +1222,16 @@ mod tests {
             packed,
             (1..5)
                 .chain(9..13)
-                .map(|i| [BabyBear::new(i), BabyBear::new(i + 4)].into())
+                .map(|i| [Bn254::new(i), Bn254::new(i + 4)].into())
                 .collect::<Vec<_>>(),
         );
     }
 
     #[test]
     fn test_vertically_packed_row_pair_overlap() {
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
-        let matrix = RowMajorMatrix::new((1..17).map(BabyBear::new).collect::<Vec<_>>(), 4);
+        let matrix = RowMajorMatrix::new((1..17).map(Bn254::new).collect::<Vec<_>>(), 4);
 
         // Original matrix visualization:
         //
@@ -1255,19 +1255,19 @@ mod tests {
             packed,
             (1..5)
                 .chain(5..9)
-                .map(|i| [BabyBear::new(i), BabyBear::new(i + 4)].into())
+                .map(|i| [Bn254::new(i), Bn254::new(i + 4)].into())
                 .collect::<Vec<_>>(),
         );
     }
 
     #[test]
     fn test_vertically_packed_row_pair_wraparound_start_1() {
-        use p3_baby_bear::BabyBear;
+        use p3_bn254::Bn254;
         use p3_field::FieldArray;
 
-        type Packed = FieldArray<BabyBear, 2>;
+        type Packed = FieldArray<Bn254, 2>;
 
-        let matrix = RowMajorMatrix::new((1..17).map(BabyBear::new).collect::<Vec<_>>(), 4);
+        let matrix = RowMajorMatrix::new((1..17).map(Bn254::new).collect::<Vec<_>>(), 4);
 
         // Original matrix visualization:
         //
@@ -1292,14 +1292,14 @@ mod tests {
         assert_eq!(
             packed,
             vec![
-                Packed::from([BabyBear::new(5), BabyBear::new(9)]),
-                Packed::from([BabyBear::new(6), BabyBear::new(10)]),
-                Packed::from([BabyBear::new(7), BabyBear::new(11)]),
-                Packed::from([BabyBear::new(8), BabyBear::new(12)]),
-                Packed::from([BabyBear::new(13), BabyBear::new(1)]),
-                Packed::from([BabyBear::new(14), BabyBear::new(2)]),
-                Packed::from([BabyBear::new(15), BabyBear::new(3)]),
-                Packed::from([BabyBear::new(16), BabyBear::new(4)]),
+                Packed::from([Bn254::new(5), Bn254::new(9)]),
+                Packed::from([Bn254::new(6), Bn254::new(10)]),
+                Packed::from([Bn254::new(7), Bn254::new(11)]),
+                Packed::from([Bn254::new(8), Bn254::new(12)]),
+                Packed::from([Bn254::new(13), Bn254::new(1)]),
+                Packed::from([Bn254::new(14), Bn254::new(2)]),
+                Packed::from([Bn254::new(15), Bn254::new(3)]),
+                Packed::from([Bn254::new(16), Bn254::new(4)]),
             ]
         );
     }

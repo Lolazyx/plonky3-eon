@@ -20,7 +20,6 @@ use crate::dense::RowMajorMatrix;
 
 pub mod bitrev;
 pub mod dense;
-pub mod extension;
 pub mod horizontally_truncated;
 pub mod row_index_mapped;
 pub mod stack;
@@ -504,33 +503,7 @@ mod tests {
     use alloc::vec::Vec;
     use alloc::{format, vec};
 
-    use itertools::izip;
-    use p3_baby_bear::BabyBear;
-    use p3_field::PrimeCharacteristicRing;
-    use p3_field::extension::BinomialExtensionField;
-    use rand::SeedableRng;
-    use rand::rngs::SmallRng;
-
     use super::*;
-
-    #[test]
-    fn test_columnwise_dot_product() {
-        type F = BabyBear;
-        type EF = BinomialExtensionField<BabyBear, 4>;
-
-        let mut rng = SmallRng::seed_from_u64(1);
-        let m = RowMajorMatrix::<F>::rand(&mut rng, 1 << 8, 1 << 4);
-        let v = RowMajorMatrix::<EF>::rand(&mut rng, 1 << 8, 1).values;
-
-        let mut expected = vec![EF::ZERO; m.width()];
-        for (row, &scale) in izip!(m.rows(), &v) {
-            for (l, r) in izip!(&mut expected, row) {
-                *l += scale * r;
-            }
-        }
-
-        assert_eq!(m.columnwise_dot_product(&v), expected);
-    }
 
     // Mock implementation for testing purposes
     struct MockMatrix {

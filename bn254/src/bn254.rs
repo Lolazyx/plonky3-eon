@@ -61,6 +61,17 @@ pub struct Bn254 {
 }
 
 impl Bn254 {
+    /// Creates a new BN254 field element from a u64 value.
+    ///
+    /// This is a convenience function equivalent to using `from_u64`.
+    #[inline]
+    pub fn new(value: u64) -> Self {
+        // Convert u64 to [u64; 4] with the value in the first position
+        let inner = [value, 0, 0, 0];
+        // Convert to Montgomery form by multiplying by R^2 and doing a monty reduction
+        Self::new_monty(monty_mul(BN254_MONTY_R_SQ, inner))
+    }
+
     /// Creates a new BN254 field element from an array of 4 u64's.
     ///
     /// The array is assumed to correspond to a 254-bit integer less than P and is interpreted as
