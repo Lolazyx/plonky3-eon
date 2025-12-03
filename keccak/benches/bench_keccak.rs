@@ -3,8 +3,8 @@ use core::hint::black_box;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use p3_field::PrimeCharacteristicRing;
 use p3_keccak::{KeccakF, VECTOR_LEN};
-use p3_mersenne_31::Mersenne31;
 use p3_symmetric::{CryptographicHasher, PaddingFreeSponge, Permutation, SerializingHasher};
+use p3_bn254::Bn254;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     keccak_permutation(c);
@@ -45,7 +45,7 @@ pub fn keccak_u64_hash(c: &mut Criterion) {
 }
 
 pub fn keccak_field_32_hash(c: &mut Criterion) {
-    type F = Mersenne31;
+    type F = Bn254;
     type P = [F; VECTOR_LEN];
     const PACKED_ELEMS_PER_HASH: usize = 100;
     const BYTES_PER_HASH: usize = size_of::<P>() * PACKED_ELEMS_PER_HASH;
