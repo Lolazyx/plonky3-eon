@@ -7,16 +7,14 @@ use p3_symmetric::{CryptographicPermutation, Hash};
 
 use crate::{CanObserve, CanSample, CanSampleBits, FieldChallenger};
 
-/// A challenger that operates natively on PF but produces challenges of F: PrimeField32.
+/// A challenger that operates natively on PF but produces challenges of F: PrimeField.
 ///
-/// Used for optimizing the cost of recursive proof verification of STARKs in SNARKs.
-///
-/// SAFETY: There are some bias complications with using this challenger. In particular,
-/// samples are actually random in [0, 2^64) and then reduced to be in F.
+/// We observe group elements (in the form of BN::Basefield) and generate scalar field elements. 
+///  
 #[derive(Clone, Debug)]
-pub struct MultiField32Challenger<F, PF, P, const WIDTH: usize, const RATE: usize>
+pub struct MultiFieldChallenger<F, PF, P, const WIDTH: usize, const RATE: usize>
 where
-    F: PrimeField32,
+    F: PrimeField,
     PF: Field,
     P: CryptographicPermutation<[PF; WIDTH]>,
 {
@@ -27,7 +25,7 @@ where
     num_f_elms: usize,
 }
 
-impl<F, PF, P, const WIDTH: usize, const RATE: usize> MultiField32Challenger<F, PF, P, WIDTH, RATE>
+impl<F, PF, P, const WIDTH: usize, const RATE: usize> MultiFieldChallenger<F, PF, P, WIDTH, RATE>
 where
     F: PrimeField32,
     PF: Field,
