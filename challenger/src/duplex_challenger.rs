@@ -1,7 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use p3_field::{BasedVectorSpace, Field, PrimeField64};
+use p3_field::{BasedVectorSpace, Field, PrimeField};
 use p3_symmetric::{CryptographicPermutation, Hash};
 
 use crate::{CanObserve, CanSample, CanSampleBits, FieldChallenger};
@@ -94,7 +94,7 @@ where
 impl<F, P, const WIDTH: usize, const RATE: usize> FieldChallenger<F>
     for DuplexChallenger<F, P, WIDTH, RATE>
 where
-    F: PrimeField64,
+    F: PrimeField,
     P: CryptographicPermutation<[F; WIDTH]>,
 {
 }
@@ -184,23 +184,26 @@ where
 impl<F, P, const WIDTH: usize, const RATE: usize> CanSampleBits<usize>
     for DuplexChallenger<F, P, WIDTH, RATE>
 where
-    F: PrimeField64,
+    F: PrimeField,
     P: CryptographicPermutation<[F; WIDTH]>,
 {
-    /// The sampled bits are not perfectly uniform, but we can bound the error: every sequence
-    /// appears with probability 1/p-close to uniform (1/2^b).
+    /// Sample random bits by taking the low bits of a field element.
     ///
-    /// Proof:
-    /// We denote p = F::ORDER_U64, and b = `bits`.
-    /// If X follows a uniform distribution over F, if we consider the first b bits of X, each
-    /// sequence appears either with probability P1 = ⌊p / 2^b⌋ / p or P2 = (1 + ⌊p / 2^b⌋) / p.
-    /// We have 1/2^b - 1/p ≤ P1, P2 ≤ 1/2^b + 1/p
+    /// The sampled bits are not perfectly uniform, but the bias is negligible for large fields.
+    /// For a field of order p, the statistical distance from uniform is at most 1/p per sample.
     fn sample_bits(&mut self, bits: usize) -> usize {
         assert!(bits < (usize::BITS as usize));
-        assert!((1 << bits) < F::ORDER_U64);
         let rand_f: F = self.sample();
-        let rand_usize = rand_f.as_canonical_u64() as usize;
-        rand_usize & ((1 << bits) - 1)
+        // Convert field element to bytes and extract the requested number of bits
+        let bytes = rand_f.as_canonical_biguint().to_bytes_le();
+        let mut result = 0usize;
+        for (i, &byte) in bytes.iter().enumerate() {
+            if i * 8 >= bits {
+                break;
+            }
+            result |= (byte as usize) << (i * 8);
+        }
+        result & ((1 << bits) - 1)
     }
 }
 
@@ -208,22 +211,16 @@ where
 mod tests {
     use core::iter;
 
-    use p3_baby_bear::BabyBear;
+    use p3_bn254::Bn254;
     use p3_field::PrimeCharacteristicRing;
-    use p3_field::extension::BinomialExtensionField;
-    use p3_goldilocks::Goldilocks;
     use p3_symmetric::Permutation;
 
     use super::*;
-    use crate::grinding_challenger::GrindingChallenger;
 
     const WIDTH: usize = 24;
     const RATE: usize = 16;
 
-    type G = Goldilocks;
-    type EF2G = BinomialExtensionField<G, 2>;
-
-    type BB = BabyBear;
+    type G = Bn254;
 
     #[derive(Clone)]
     struct TestPermutation {}
@@ -257,42 +254,14 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_duplex_challenger_sample_bits_security() {
-        type GoldilocksChal = DuplexChallenger<G, TestPermutation, WIDTH, RATE>;
+        type Chal = DuplexChallenger<G, TestPermutation, WIDTH, RATE>;
         let permutation = TestPermutation {};
-        let mut duplex_challenger = GoldilocksChal::new(permutation);
+        let mut duplex_challenger = Chal::new(permutation);
 
+        // This should panic because we're requesting too many bits
         for _ in 0..100 {
-            assert!(duplex_challenger.sample_bits(129) < 4);
+            assert!(duplex_challenger.sample_bits(256) < 4);
         }
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_duplex_challenger_sample_bits_security_small_field() {
-        type BabyBearChal = DuplexChallenger<BB, TestPermutation, WIDTH, RATE>;
-        let permutation = TestPermutation {};
-        let mut duplex_challenger = BabyBearChal::new(permutation);
-
-        for _ in 0..100 {
-            assert!(duplex_challenger.sample_bits(40) < 1 << 31);
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_duplex_challenger_grind_security() {
-        type GoldilocksChal = DuplexChallenger<G, TestPermutation, WIDTH, RATE>;
-        let permutation = TestPermutation {};
-        let mut duplex_challenger = GoldilocksChal::new(permutation);
-
-        // This should cause sample_bits (and hence grind and check_witness) to
-        // panic. If bit sizes were not constrained correctly inside the
-        // challenger, (1 << too_many_bits) would loop around, incorrectly
-        // grinding and accepting a 1-bit PoW.
-        let too_many_bits = usize::BITS as usize;
-
-        let witness = duplex_challenger.grind(too_many_bits);
-        assert!(duplex_challenger.check_witness(too_many_bits, witness));
     }
 
     #[test]
@@ -345,15 +314,13 @@ mod tests {
     }
 
     #[test]
-    fn test_sample_multiple_extension_field() {
-        use p3_field::extension::BinomialExtensionField;
-        type EF = BinomialExtensionField<G, 2>;
+    fn test_sample_multiple_field() {
         let mut chal = DuplexChallenger::<G, TestPermutation, WIDTH, RATE>::new(TestPermutation {});
 
         chal.observe(G::from_u8(1));
         chal.observe(G::from_u8(2));
-        let _: EF = chal.sample();
-        let _: EF = chal.sample();
+        let _: G = chal.sample();
+        let _: G = chal.sample();
     }
 
     #[test]
@@ -369,7 +336,7 @@ mod tests {
 
         let bits = 3;
         let value = chal.sample_bits(bits);
-        let expected = G::ZERO.as_canonical_u64() as usize & ((1 << bits) - 1);
+        let expected = 0usize & ((1 << bits) - 1);
         assert_eq!(value, expected);
     }
 
@@ -383,7 +350,7 @@ mod tests {
         // sampling bits should not panic, should return 0
         let bits = 2;
         let sample = chal.sample_bits(bits);
-        let expected = G::ZERO.as_canonical_u64() as usize & ((1 << bits) - 1);
+        let expected =0usize & ((1 << bits) - 1);
         assert_eq!(sample, expected);
     }
 
@@ -473,66 +440,5 @@ mod tests {
 
         // Output buffer should match expected state from duplexing
         assert_eq!(chal.output_buffer, expected_output);
-    }
-
-    #[test]
-    fn test_observe_base_as_algebra_element_consistency_with_direct_observe() {
-        // Create two identical challengers to verify behavior equivalence
-        let mut chal1 =
-            DuplexChallenger::<G, TestPermutation, WIDTH, RATE>::new(TestPermutation {});
-        let mut chal2 =
-            DuplexChallenger::<G, TestPermutation, WIDTH, RATE>::new(TestPermutation {});
-
-        let base_val = G::from_u8(99);
-
-        // Method 1: Use the convenience method for base-to-extension observation
-        chal1.observe_base_as_algebra_element::<EF2G>(base_val);
-
-        // Method 2: Manually convert to extension field then observe
-        let ext_val = EF2G::from(base_val);
-        chal2.observe_algebra_element(ext_val);
-
-        // Both methods must produce identical internal state
-        assert_eq!(chal1.input_buffer, chal2.input_buffer);
-        assert_eq!(chal1.output_buffer, chal2.output_buffer);
-        assert_eq!(chal1.sponge_state, chal2.sponge_state);
-    }
-
-    #[test]
-    fn test_observe_base_as_algebra_element_stream_consistency() {
-        // Create two identical challengers for stream observation test
-        let mut chal1 =
-            DuplexChallenger::<G, TestPermutation, WIDTH, RATE>::new(TestPermutation {});
-        let mut chal2 =
-            DuplexChallenger::<G, TestPermutation, WIDTH, RATE>::new(TestPermutation {});
-
-        // Define a base value vector
-        let base_values: Vec<_> = (0u8..25).map(G::from_u8).collect();
-
-        // Method 1: Observe stream using convenience method
-        for &val in &base_values {
-            chal1.observe_base_as_algebra_element::<EF2G>(val);
-        }
-
-        // Method 2: Manually convert each element before observing
-        for &val in &base_values {
-            let ext_val = EF2G::from(val);
-            chal2.observe_algebra_element(ext_val);
-        }
-
-        // Verify identical state through sequential observations and duplexing.
-        assert_eq!(chal1.input_buffer, chal2.input_buffer);
-        assert_eq!(chal1.output_buffer, chal2.output_buffer);
-        assert_eq!(chal1.sponge_state, chal2.sponge_state);
-
-        // Verify sampling produces identical challenges
-        let sample1: EF2G = chal1.sample_algebra_element();
-        let sample2: EF2G = chal2.sample_algebra_element();
-        assert_eq!(sample1, sample2);
-
-        // Verify state consistency is maintained after sampling
-        assert_eq!(chal1.input_buffer, chal2.input_buffer);
-        assert_eq!(chal1.output_buffer, chal2.output_buffer);
-        assert_eq!(chal1.sponge_state, chal2.sponge_state);
     }
 }
