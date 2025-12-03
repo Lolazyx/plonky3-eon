@@ -343,7 +343,7 @@ mod tests {
     use alloc::vec;
 
     use itertools::Itertools;
-    use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
+    use p3_bn254::{Bn254, Poseidon2Bn254};
     use p3_commit::Mmcs;
     use p3_field::{Field, PrimeCharacteristicRing};
     use p3_matrix::dense::RowMajorMatrix;
@@ -356,9 +356,9 @@ mod tests {
 
     use super::MerkleTreeMmcs;
 
-    type F = BabyBear;
+    type F = Bn254;
 
-    type Perm = Poseidon2BabyBear<16>;
+    type Perm = Poseidon2Bn254<3>;
     type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
     type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
     type MyMmcs =
