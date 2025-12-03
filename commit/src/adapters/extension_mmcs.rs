@@ -3,7 +3,6 @@ use core::marker::PhantomData;
 use core::ops::Deref;
 
 use p3_field::{ExtensionField, Field};
-use p3_matrix::extension::FlatMatrixView;
 use p3_matrix::{Dimensions, Matrix};
 
 use crate::{BatchOpening, BatchOpeningRef, Mmcs};

@@ -723,12 +723,7 @@ mod tests {
     #[test]
     fn test_bit_reversed_zero_pad() {
         let matrix = RowMajorMatrix::new(
-            vec![
-                Bn254::new(1),
-                Bn254::new(2),
-                Bn254::new(3),
-                Bn254::new(4),
-            ],
+            vec![Bn254::new(1), Bn254::new(2), Bn254::new(3), Bn254::new(4)],
             2,
         );
         let padded = matrix.bit_reversed_zero_pad(1);
@@ -751,12 +746,7 @@ mod tests {
     #[test]
     fn test_bit_reversed_zero_pad_no_change() {
         let matrix = RowMajorMatrix::new(
-            vec![
-                Bn254::new(1),
-                Bn254::new(2),
-                Bn254::new(3),
-                Bn254::new(4),
-            ],
+            vec![Bn254::new(1), Bn254::new(2), Bn254::new(3), Bn254::new(4)],
             2,
         );
         let padded = matrix.bit_reversed_zero_pad(0);
@@ -764,12 +754,7 @@ mod tests {
         assert_eq!(padded.width, 2);
         assert_eq!(
             padded.values,
-            vec![
-                Bn254::new(1),
-                Bn254::new(2),
-                Bn254::new(3),
-                Bn254::new(4),
-            ]
+            vec![Bn254::new(1), Bn254::new(2), Bn254::new(3), Bn254::new(4),]
         );
     }
 
@@ -859,10 +844,7 @@ mod tests {
         let packed: Vec<_> = packed_iter.collect();
         let suffix: Vec<_> = suffix_iter.collect();
 
-        assert_eq!(
-            packed,
-            vec![Packed::from([Bn254::new(4), Bn254::new(5)])]
-        );
+        assert_eq!(packed, vec![Packed::from([Bn254::new(4), Bn254::new(5)])]);
         assert_eq!(suffix, vec![Bn254::new(6)]);
     }
 
@@ -941,12 +923,7 @@ mod tests {
     #[test]
     fn test_flatten_to_base() {
         let matrix = RowMajorMatrix::new(
-            vec![
-                Bn254::new(2),
-                Bn254::new(3),
-                Bn254::new(4),
-                Bn254::new(5),
-            ],
+            vec![Bn254::new(2), Bn254::new(3), Bn254::new(4), Bn254::new(5)],
             2,
         );
 
@@ -955,12 +932,7 @@ mod tests {
         assert_eq!(flattened.width, 2);
         assert_eq!(
             flattened.values,
-            vec![
-                Bn254::new(2),
-                Bn254::new(3),
-                Bn254::new(4),
-                Bn254::new(5),
-            ]
+            vec![Bn254::new(2), Bn254::new(3), Bn254::new(4), Bn254::new(5),]
         );
     }
 

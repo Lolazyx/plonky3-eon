@@ -12,8 +12,7 @@ use p3_field::op_assign_macros::{
     impl_add_assign, impl_div_methods, impl_mul_methods, impl_sub_assign, ring_sum,
 };
 use p3_field::{
-    Field, InjectiveMonomial, Packable, PrimeCharacteristicRing, PrimeField, RawDataSerializable,
-    TwoAdicField, quotient_map_small_int,
+    ExtensionField, Field, InjectiveMonomial, Packable, PrimeCharacteristicRing, PrimeField, RawDataSerializable, TwoAdicField, quotient_map_small_int
 };
 use rand::Rng;
 use rand::distr::{Distribution, StandardUniform};

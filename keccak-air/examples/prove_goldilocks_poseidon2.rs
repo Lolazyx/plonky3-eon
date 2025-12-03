@@ -72,4 +72,4 @@
 //     verify(&config, &KeccakAir {}, &proof, &[])
 // }
 
-fn main(){}
+fn main() {}

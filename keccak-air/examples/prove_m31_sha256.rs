@@ -71,4 +71,4 @@
 //     let proof = prove(&config, &KeccakAir {}, trace, &[]);
 //     verify(&config, &KeccakAir {}, &proof, &[])
 // }
-fn main(){}
+fn main() {}

@@ -287,12 +287,7 @@ mod tests {
         // [ 1  2 ]
         // [ 3  4 ]
         let inner = RowMajorMatrix::new(
-            vec![
-                Bn254::new(1),
-                Bn254::new(2),
-                Bn254::new(3),
-                Bn254::new(4),
-            ],
+            vec![Bn254::new(1), Bn254::new(2), Bn254::new(3), Bn254::new(4)],
             2,
         );
 
@@ -309,10 +304,7 @@ mod tests {
         let packed: Vec<_> = packed_iter.collect();
 
         // Check the packed row values match reversed second row.
-        assert_eq!(
-            packed,
-            &[Packed::from([Bn254::new(3), Bn254::new(4)])]
-        );
+        assert_eq!(packed, &[Packed::from([Bn254::new(3), Bn254::new(4)])]);
 
         // Check there are no suffix leftovers.
         assert!(suffix_iter.next().is_none());
@@ -327,12 +319,7 @@ mod tests {
         // [ 1  2 ]
         // [ 3  4 ]
         let inner = RowMajorMatrix::new(
-            vec![
-                Bn254::new(1),
-                Bn254::new(2),
-                Bn254::new(3),
-                Bn254::new(4),
-            ],
+            vec![Bn254::new(1), Bn254::new(2), Bn254::new(3), Bn254::new(4)],
             2,
         );
 
@@ -350,11 +337,7 @@ mod tests {
         // Verify the packed result includes padding with zero at the end.
         assert_eq!(
             packed,
-            vec![Packed::from([
-                Bn254::new(3),
-                Bn254::new(4),
-                Bn254::new(0),
-            ])]
+            vec![Packed::from([Bn254::new(3), Bn254::new(4), Bn254::new(0),])]
         );
     }
 
