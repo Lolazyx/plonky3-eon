@@ -16,7 +16,8 @@ p3-maybe-rayon.workspace = true
 p3-util.workspace = true
 
 [dev-dependencies]
-p3-baby-bear.workspace = true
+# p3-baby-bear.workspace = true
+p3-bn254.workspace = true
 
 [lints]
 workspace = true

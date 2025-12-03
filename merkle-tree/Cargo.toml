@@ -24,11 +24,12 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-p3-baby-bear.workspace = true
+# p3-baby-bear.workspace = true
 p3-blake3.workspace = true
 p3-keccak.workspace = true
 p3-mds.workspace = true
-p3-rescue.workspace = true
+# p3-rescue.workspace = true
+p3-bn254.workspace = true
 
 criterion.workspace = true
 

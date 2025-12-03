@@ -23,16 +23,17 @@ tracing.workspace = true
 tikv-jemallocator = "0.6"
 
 [dev-dependencies]
-p3-baby-bear.workspace = true
+# p3-baby-bear.workspace = true
 p3-challenger.workspace = true
 p3-commit.workspace = true
 p3-dft.workspace = true
-p3-fri.workspace = true
+# p3-fri.workspace = true
 p3-keccak.workspace = true
-p3-koala-bear.workspace = true
+# p3-koala-bear.workspace = true
 p3-merkle-tree.workspace = true
 p3-symmetric.workspace = true
 p3-uni-stark.workspace = true
+p3-bn254.workspace = true
 
 tracing-forest = { workspace = true, features = ["ansi", "smallvec"] }
 tracing-subscriber = { workspace = true, features = ["std", "env-filter"] }

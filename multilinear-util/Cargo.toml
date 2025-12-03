@@ -19,7 +19,8 @@ rand.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-p3-baby-bear.workspace = true
+# p3-baby-bear.workspace = true
+p3-bn254.workspace = true
 
 proptest.workspace = true
 

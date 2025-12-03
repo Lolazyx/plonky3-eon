@@ -14,7 +14,8 @@ p3-field.workspace = true
 p3-matrix.workspace = true
 
 [dev-dependencies]
-p3-baby-bear.workspace = true
+# p3-baby-bear.workspace = true
+p3-bn254.workspace = true
 
 [lints]
 workspace = true

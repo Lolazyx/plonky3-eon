@@ -21,8 +21,12 @@ tracing.workspace = true
 transpose.workspace = true
 
 [dev-dependencies]
-p3-baby-bear.workspace = true
-p3-mersenne-31.workspace = true
+# p3-baby-bear.workspace = true
+# p3-mersenne-31.workspace = true
+
+
+p3-bn254.workspace = true
+
 
 criterion.workspace = true
 

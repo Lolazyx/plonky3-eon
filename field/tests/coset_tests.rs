@@ -1,33 +1,31 @@
 mod coset {
-    use p3_baby_bear::BabyBear;
+    use p3_bn254::Bn254;
     use p3_field::coset::TwoAdicMultiplicativeCoset;
     use p3_field::{PrimeCharacteristicRing, TwoAdicField};
-    use p3_goldilocks::Goldilocks;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    type BB = BabyBear;
-    type GL = Goldilocks;
+    type F = Bn254;
 
     #[test]
     // Checks that a coset of the maximum size allowed by the field (implementation)
     // can indeed be constructed
     fn test_coset_limit() {
-        TwoAdicMultiplicativeCoset::<BB>::new(BB::ONE, BB::TWO_ADICITY).unwrap();
+        TwoAdicMultiplicativeCoset::<F>::new(F::ONE, F::TWO_ADICITY).unwrap();
     }
 
     #[test]
     // Checks that attempting to construct a field larger than allowed by the field
     // implementation is disallowed
     fn test_coset_too_large() {
-        assert!(TwoAdicMultiplicativeCoset::<BB>::new(BB::ONE, BB::TWO_ADICITY + 1).is_none());
+        assert!(TwoAdicMultiplicativeCoset::<F>::new(F::ONE, F::TWO_ADICITY + 1).is_none());
     }
 
     #[test]
     // Checks that attempting to shrink a coset by any divisor of its size is
     // allowed, but doing so by the next power of two is not
     fn test_shrink_too_much() {
-        let coset = TwoAdicMultiplicativeCoset::<GL>::new(GL::from_u16(42), 5).unwrap();
+        let coset = TwoAdicMultiplicativeCoset::<F>::new(F::from_u16(42), 5).unwrap();
 
         for i in 0..6 {
             assert!(coset.shrink_coset(i).is_some());
@@ -39,7 +37,7 @@ mod coset {
     #[test]
     // Checks that shrinking by a factor of 2^0 = 1 does nothing
     fn test_shrink_nothing() {
-        let coset = TwoAdicMultiplicativeCoset::<BB>::new(BB::ONE, 7).unwrap();
+        let coset = TwoAdicMultiplicativeCoset::<F>::new(F::ONE, 7).unwrap();
 
         let shrunk = coset.shrink_coset(0).unwrap();
 
@@ -51,9 +49,9 @@ mod coset {
     // Checks that shrinking the whole coset results in the expected new shift
     fn test_shrink_shift() {
         let mut rng = SmallRng::seed_from_u64(1234);
-        let shift: BB = rng.random();
+        let shift: F = rng.random();
 
-        let coset = TwoAdicMultiplicativeCoset::<BB>::new(shift, 4).unwrap();
+        let coset = TwoAdicMultiplicativeCoset::<F>::new(shift, 4).unwrap();
         let shrunk = coset.exp_power_of_2(2).unwrap();
 
         assert_eq!(shrunk.shift(), shift.exp_power_of_2(2));
@@ -64,11 +62,11 @@ mod coset {
     // i-th element is the original coset's (i * k)-th element
     fn test_shrink_contained() {
         let mut rng = SmallRng::seed_from_u64(19);
-        let shift: GL = rng.random();
+        let shift: F = rng.random();
 
         let log_shrinking_factor = 3;
 
-        let mut coset = TwoAdicMultiplicativeCoset::<GL>::new(shift, 8).unwrap();
+        let mut coset = TwoAdicMultiplicativeCoset::<F>::new(shift, 8).unwrap();
         let shrunk = coset.shrink_coset(log_shrinking_factor).unwrap();
 
         for (i, e) in shrunk.iter().enumerate() {
@@ -80,7 +78,7 @@ mod coset {
     // Checks that generator_exp (access through element() of a coset of shift 1)
     // yields the correct power of the generator
     fn test_generator_exp() {
-        let mut coset = TwoAdicMultiplicativeCoset::new(BB::ONE, 10).unwrap();
+        let mut coset = TwoAdicMultiplicativeCoset::new(F::ONE, 10).unwrap();
 
         for i in 0..1 << 5 {
             assert_eq!(
@@ -95,7 +93,7 @@ mod coset {
     // order)
     fn test_coset_iterator() {
         let mut rng = SmallRng::seed_from_u64(57);
-        let shift: BB = rng.random();
+        let shift: F = rng.random();
         let log_size = 3;
 
         let mut coset = TwoAdicMultiplicativeCoset::new(shift, log_size).unwrap();
@@ -108,7 +106,7 @@ mod coset {
 
     #[test]
     fn test_element_wrap_around() {
-        let mut coset = TwoAdicMultiplicativeCoset::new(BB::ONE, 3).unwrap();
+        let mut coset = TwoAdicMultiplicativeCoset::new(F::ONE, 3).unwrap();
 
         for i in [1, 2] {
             for j in 0..coset.size() {
@@ -122,11 +120,11 @@ mod coset {
     fn test_element() {
         let mut rng = SmallRng::seed_from_u64(53);
 
-        let shift: GL = rng.random();
-        let mut coset = TwoAdicMultiplicativeCoset::new(shift, GL::TWO_ADICITY).unwrap();
+        let shift: F = rng.random();
+        let mut coset = TwoAdicMultiplicativeCoset::new(shift, F::TWO_ADICITY).unwrap();
 
         for _ in 0..100 {
-            let exp = rng.random::<u64>() % (1 << GL::TWO_ADICITY);
+            let exp = rng.random::<u64>() % (1 << F::TWO_ADICITY);
             let expected = coset.shift() * coset.subgroup_generator().exp_u64(exp);
             assert_eq!(coset.element(exp as usize), expected);
         }
@@ -136,13 +134,13 @@ mod coset {
     // Checks that the contains method returns true on all elements of the coset
     fn test_contains() {
         let mut rng = SmallRng::seed_from_u64(1729);
-        let shift: BB = rng.random();
+        let shift: F = rng.random();
 
         let log_size = 8;
 
         let coset = TwoAdicMultiplicativeCoset::new(shift, log_size).unwrap();
 
-        let mut d = BB::ONE;
+        let mut d = F::ONE;
 
         for _ in 0..(1 << log_size) {
             assert!(coset.contains(coset.shift() * d));

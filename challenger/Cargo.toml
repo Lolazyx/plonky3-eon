@@ -18,8 +18,11 @@ p3-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-p3-baby-bear.workspace = true
-p3-goldilocks.workspace = true
+# p3-baby-bear.workspace = true
+# p3-goldilocks.workspace = true
+
+p3-bn254.workspace = true
+
 
 [lints]
 workspace = true
