@@ -1,16 +1,15 @@
-use alloc::vec;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use p3_challenger::CanSample;
-use p3_field::{ExtensionField, Field, TwoAdicField};
+use p3_field::{ExtensionField, TwoAdicField};
 use p3_field::coset::TwoAdicMultiplicativeCoset;
 use p3_interpolation::interpolate_coset;
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
 
-use crate::{OpenedValues, Pcs, PolynomialSpace};
+use crate::{OpenedValues, Pcs};
 
 /// A dummy PCS where the commitment is the polynomial itself (stored as evaluations).
 /// This provides no cryptographic security and is only useful for testing or debugging.
@@ -90,14 +89,22 @@ where
         idx: usize,
         domain: Self::Domain,
     ) -> Self::EvaluationsOnDomain<'a> {
-        // For the dummy PCS, we assume the requested domain matches the stored domain
-        // In a real implementation, you might need to interpolate to a different domain
-        assert_eq!(
-            prover_data[idx].0.size(),
-            domain.size(),
-            "Domain size mismatch in dummy PCS"
-        );
-        prover_data[idx].1.clone()
+        let (stored_domain, stored_evals) = &prover_data[idx];
+
+        // If the requested domain matches exactly, we can return the stored evaluations directly.
+        if stored_domain.shift() == domain.shift() && stored_domain.size() == domain.size() {
+            return stored_evals.clone();
+        }
+
+        // Otherwise interpolate the committed polynomial onto the requested domain.
+        // This is needed, for example, when the quotient domain is a disjoint coset.
+        let width = stored_evals.width();
+        let values = domain
+            .iter()
+            .flat_map(|point| eval_poly_at_point_coset(stored_domain, stored_evals, point))
+            .collect();
+
+        RowMajorMatrix::new(values, width)
     }
 
     fn open(
