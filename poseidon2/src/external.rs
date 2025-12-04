@@ -337,13 +337,13 @@ pub fn external_initial_permute_state<
 
 #[cfg(test)]
 mod tests {
-    use p3_baby_bear::BabyBear;
+    use p3_bn254::Bn254;
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
 
     use super::*;
 
-    type F = BabyBear;
+    type F = Bn254;
 
     #[test]
     fn test_apply_mat4() {

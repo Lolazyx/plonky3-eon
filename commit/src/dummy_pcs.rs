@@ -243,8 +243,10 @@ mod tests {
 
         // Commit to the polynomial
         // Use trait explicitly with Bn254 as Challenge
-        let (commitment, _prover_data) =
-            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(&pcs, vec![(domain, evals.clone())]);
+        let (commitment, _prover_data) = <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(
+            &pcs,
+            vec![(domain, evals.clone())],
+        );
 
         // Verify the commitment contains the evaluations
         assert_eq!(commitment.len(), 1);
@@ -281,8 +283,10 @@ mod tests {
         );
 
         // Commit to both
-        let (commitment, _prover_data) =
-            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(&pcs, vec![(domain1, evals1), (domain2, evals2)]);
+        let (commitment, _prover_data) = <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(
+            &pcs,
+            vec![(domain1, evals1), (domain2, evals2)],
+        );
 
         assert_eq!(commitment.len(), 2);
         assert_eq!(commitment[0].height(), 4);
@@ -299,12 +303,19 @@ mod tests {
             1,
         );
 
-        let (_, prover_data) =
-            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(&pcs, vec![(domain, evals.clone())]);
+        let (_, prover_data) = <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(
+            &pcs,
+            vec![(domain, evals.clone())],
+        );
 
         // Get evaluations on the same domain
         let retrieved_evals =
-            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::get_evaluations_on_domain(&pcs, &prover_data, 0, domain);
+            <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::get_evaluations_on_domain(
+                &pcs,
+                &prover_data,
+                0,
+                domain,
+            );
 
         assert_eq!(retrieved_evals.height(), evals.height());
         assert_eq!(retrieved_evals.width(), evals.width());

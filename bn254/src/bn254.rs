@@ -12,7 +12,8 @@ use p3_field::op_assign_macros::{
     impl_add_assign, impl_div_methods, impl_mul_methods, impl_sub_assign, ring_sum,
 };
 use p3_field::{
-    ExtensionField, Field, InjectiveMonomial, Packable, PrimeCharacteristicRing, PrimeField, RawDataSerializable, TwoAdicField, quotient_map_small_int
+    Field, InjectiveMonomial, Packable, PrimeCharacteristicRing, PrimeField, RawDataSerializable,
+    TwoAdicField, quotient_map_small_int,
 };
 use rand::Rng;
 use rand::distr::{Distribution, StandardUniform};
@@ -69,6 +70,18 @@ impl Bn254 {
         let inner = [value, 0, 0, 0];
         // Convert to Montgomery form by multiplying by R^2 and doing a monty reduction
         Self::new_monty(monty_mul(BN254_MONTY_R_SQ, inner))
+    }
+
+    /// Convert a constant u64 array into a constant Bn254 array.
+    #[inline]
+    pub fn new_array<const N: usize>(input: [u64; N]) -> [Self; N] {
+        let mut output = [Self::ZERO; N];
+        let mut i = 0;
+        while i < N {
+            output[i] = Self::new(input[i]);
+            i += 1;
+        }
+        output
     }
 
     /// Creates a new BN254 field element from an array of 4 u64's.
