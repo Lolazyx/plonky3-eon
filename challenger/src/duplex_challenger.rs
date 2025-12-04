@@ -2,6 +2,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use p3_field::{BasedVectorSpace, Field, PrimeField};
+use p3_matrix::Matrix;
+use p3_matrix::dense::RowMajorMatrix;
 use p3_symmetric::{CryptographicPermutation, Hash};
 
 use crate::{CanObserve, CanSample, CanSampleBits, FieldChallenger};
@@ -154,6 +156,26 @@ where
         for values in valuess {
             for value in values {
                 self.observe(value);
+            }
+        }
+    }
+}
+
+// for DummyPcs - observe matrices by iterating through all elements
+impl<F, P, const WIDTH: usize, const RATE: usize> CanObserve<Vec<RowMajorMatrix<F>>>
+    for DuplexChallenger<F, P, WIDTH, RATE>
+where
+    F: Copy + Send + Sync,
+    P: CryptographicPermutation<[F; WIDTH]>,
+{
+    fn observe(&mut self, matrices: Vec<RowMajorMatrix<F>>) {
+        for matrix in matrices {
+            for row_idx in 0..matrix.height() {
+                if let Some(row) = matrix.row_slice(row_idx) {
+                    for &value in &*row {
+                        self.observe(value);
+                    }
+                }
             }
         }
     }

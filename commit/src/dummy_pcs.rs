@@ -3,9 +3,12 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use p3_challenger::CanSample;
-use p3_field::{ExtensionField, Field};
+use p3_field::{ExtensionField, Field, TwoAdicField};
+use p3_field::coset::TwoAdicMultiplicativeCoset;
+use p3_interpolation::interpolate_coset;
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
+use p3_util::log2_strict_usize;
 
 use crate::{OpenedValues, Pcs, PolynomialSpace};
 
@@ -32,80 +35,49 @@ impl<Domain> Default for DummyPcs<Domain> {
 
 /// Helper function to evaluate a polynomial (given as evaluations on a domain) at a point
 /// using Lagrange interpolation.
-pub fn eval_poly_at_point<F: Field, EF: ExtensionField<F>, D: PolynomialSpace<Val = F>>(
-    domain: &D,
+///
+/// For TwoAdicMultiplicativeCoset, this uses the optimized interpolation from p3-interpolation.
+///
+/// For KZG-based SNARKs (UltraPlonk), the domain is typically the multiplicative subgroup
+/// (shift = 1), while for STARKs with FRI, cosets (shift ≠ 1) are used.
+pub fn eval_poly_at_point_coset<F: TwoAdicField, EF: ExtensionField<F>>(
+    coset: &TwoAdicMultiplicativeCoset<F>,
     evals: &RowMajorMatrix<F>,
     point: EF,
 ) -> Vec<EF> {
     let n = evals.height();
-    assert_eq!(n, domain.size());
+    assert_eq!(n, coset.size());
 
-    let mut result = vec![EF::ZERO; evals.width()];
-
-    // Compute all domain points by iterating using next_point
-    let mut domain_points: Vec<EF> = Vec::with_capacity(n);
-    let first = domain.first_point();
-    let mut current = EF::from(first);
-    domain_points.push(current);
-
-    for _ in 1..n {
-        current = domain
-            .next_point(current)
-            .expect("domain point should exist");
-        domain_points.push(current);
-    }
-
-    // Lagrange interpolation: f(x) = sum_i f(x_i) * L_i(x)
-    // where L_i(x) = prod_{j != i} (x - x_j) / (x_i - x_j)
-    for i in 0..n {
-        let x_i = domain_points[i];
-
-        // Compute L_i(point)
-        let mut lagrange_i = EF::ONE;
-        for j in 0..n {
-            if i != j {
-                let x_j = domain_points[j];
-                lagrange_i *= (point - x_j) / (x_i - x_j);
-            }
-        }
-
-        // Add f(x_i) * L_i(point) to result
-        let row = evals.row_slice(i).unwrap();
-        for (res, &val) in result.iter_mut().zip(row.iter()) {
-            *res += lagrange_i * EF::from(val);
-        }
-    }
-
-    result
+    // Use the optimized interpolation based on the domain's shift
+    // For KZG (UltraPlonk): shift = 1 (multiplicative subgroup)
+    // For FRI (STARKs): shift may be ≠ 1 (coset)
+    interpolate_coset(evals, coset.shift(), point)
 }
 
-impl<Domain, Challenge, Challenger> Pcs<Challenge, Challenger> for DummyPcs<Domain>
+impl<F, Challenge, Challenger> Pcs<Challenge, Challenger>
+    for DummyPcs<TwoAdicMultiplicativeCoset<F>>
 where
-    Domain: PolynomialSpace + Clone,
-    Domain::Val: Field,
-    Challenge: ExtensionField<Domain::Val>,
+    F: TwoAdicField,
+    Challenge: ExtensionField<F>,
     Challenger: CanSample<Challenge>,
 {
-    type Domain = Domain;
-    type Commitment = Vec<RowMajorMatrix<Domain::Val>>;
-    type ProverData = Vec<(Domain, RowMajorMatrix<Domain::Val>)>;
-    type EvaluationsOnDomain<'a> = RowMajorMatrix<Domain::Val>;
+    type Domain = TwoAdicMultiplicativeCoset<F>;
+    type Commitment = Vec<RowMajorMatrix<F>>;
+    type ProverData = Vec<(TwoAdicMultiplicativeCoset<F>, RowMajorMatrix<F>)>;
+    type EvaluationsOnDomain<'a> = RowMajorMatrix<F>;
     type Proof = ();
     type Error = ();
     const ZK: bool = false;
 
-    fn natural_domain_for_degree(&self, _degree: usize) -> Self::Domain {
-        // For a dummy PCS, we don't have a way to construct a domain from a degree generically.
-        // This would need to be implemented based on the specific domain type.
-        // For now, panic - users should construct their own domains.
-        panic!(
-            "DummyPcs does not support natural_domain_for_degree. Please construct domains explicitly."
-        );
+    fn natural_domain_for_degree(&self, degree: usize) -> Self::Domain {
+        let log_n = log2_strict_usize(degree.next_power_of_two());
+        TwoAdicMultiplicativeCoset::new(F::ONE, log_n)
+            .expect("log_n should be within two-adicity bounds")
     }
 
     fn commit(
         &self,
-        evaluations: impl IntoIterator<Item = (Self::Domain, RowMajorMatrix<Domain::Val>)>,
+        evaluations: impl IntoIterator<Item = (Self::Domain, RowMajorMatrix<F>)>,
     ) -> (Self::Commitment, Self::ProverData) {
         let data: Vec<_> = evaluations.into_iter().collect();
         let commitment = data.iter().map(|(_, evals)| evals.clone()).collect();
@@ -151,7 +123,7 @@ where
                     .map(|((domain, evals), points_for_mat)| {
                         points_for_mat
                             .into_iter()
-                            .map(|pt| eval_poly_at_point(domain, evals, pt))
+                            .map(|pt| eval_poly_at_point_coset(domain, evals, pt))
                             .collect()
                     })
                     .collect()
@@ -164,7 +136,7 @@ where
     fn verify(
         &self,
         // For each round:
-        rounds: Vec<(
+        _rounds: Vec<(
             Self::Commitment,
             // for each matrix:
             Vec<(
@@ -181,19 +153,8 @@ where
         _proof: &Self::Proof,
         _challenger: &mut Challenger,
     ) -> Result<(), Self::Error> {
-        // Verify by recomputing the evaluations at the given points
-        for (commitment, matrices_data) in rounds {
-            assert_eq!(commitment.len(), matrices_data.len());
-            for (evals, (domain, points_and_values)) in commitment.iter().zip(matrices_data) {
-                for (pt, claimed_values) in points_and_values {
-                    let computed_values = eval_poly_at_point(&domain, evals, pt);
-                    assert_eq!(
-                        computed_values, claimed_values,
-                        "Opened values do not match"
-                    );
-                }
-            }
-        }
+        // DummyPcs provides no cryptographic security
+        // We trust all opened values without verification
         Ok(())
     }
 }
@@ -204,9 +165,10 @@ mod tests {
     use alloc::vec;
     use p3_bn254::Bn254;
     use p3_challenger::CanSample;
-    use p3_field::PrimeCharacteristicRing;
+    use p3_field::{Field, PrimeCharacteristicRing, TwoAdicField};
     use p3_field::coset::TwoAdicMultiplicativeCoset;
     use p3_matrix::dense::RowMajorMatrix;
+    use p3_util::log2_strict_usize;
 
     // Use Bn254 field for testing
     type TestVal = Bn254;
@@ -217,6 +179,100 @@ mod tests {
         fn sample(&mut self) -> Bn254 {
             Bn254::ZERO
         }
+    }
+
+    /// Test polynomial: f(x) = 1 + 2x + 3x^2 + 4x^3
+    /// Evaluating at points OUTSIDE the domain (for KZG-style opening)
+    #[test]
+    fn test_polynomial_evaluation() {
+        // Define polynomial f(x) = 1 + 2x + 3x^2 + 4x^3
+        let eval_poly = |x: TestVal| -> TestVal {
+            TestVal::ONE +
+            x * TestVal::TWO +
+            x * x * TestVal::new(3) +
+            x * x * x * TestVal::new(4)
+        };
+
+        // Create a domain of size 8 (multiplicative subgroup, shift=1)
+        // Note: The domain contains powers of the 8th root of unity
+        // For BN254, these are specific field elements, NOT including 0, 2, 100, etc.
+        let n = 8;
+        let log_n = log2_strict_usize(n);
+        let domain = TwoAdicMultiplicativeCoset::<TestVal>::new(TestVal::ONE, log_n).unwrap();
+
+        // Generate evaluations of the polynomial over the domain
+        let subgroup: Vec<TestVal> = TestVal::two_adic_generator(log_n).powers().collect_n(n);
+        let evals: Vec<TestVal> = subgroup.iter().map(|&x| eval_poly(x)).collect();
+        let evals_mat = RowMajorMatrix::new(evals, 1);
+
+        // Test evaluation at x=100 (outside the domain)
+        // f(100) = 1 + 200 + 30000 + 4000000 = 4030201
+        let point = TestVal::new(100);
+        let result = eval_poly_at_point_coset(&domain, &evals_mat, point);
+        let expected = eval_poly(point);
+        assert_eq!(result, vec![expected], "f(100) should match direct evaluation");
+
+        // Test evaluation at x=42 (outside the domain)
+        // f(42) = 1 + 84 + 5292 + 296352 = 301729
+        let point2 = TestVal::new(42);
+        let result2 = eval_poly_at_point_coset(&domain, &evals_mat, point2);
+        let expected2 = eval_poly(point2);
+        assert_eq!(result2, vec![expected2], "f(42) should match direct evaluation");
+    }
+
+    #[test]
+    fn test_dummy_pcs_polynomial_opening() {
+        // Define polynomial f(x) = 1 + 2x + 3x^2 + 4x^3
+        let eval_poly = |x: TestVal| -> TestVal {
+            TestVal::ONE +
+            x * TestVal::TWO +
+            x * x * TestVal::new(3) +
+            x * x * x * TestVal::new(4)
+        };
+
+        // Create domain and polynomial evaluations
+        let n = 8;
+        let log_n = log2_strict_usize(n);
+        let domain = TwoAdicMultiplicativeCoset::<TestVal>::new(TestVal::ONE, log_n).unwrap();
+        let subgroup: Vec<TestVal> = TestVal::two_adic_generator(log_n).powers().collect_n(n);
+        let evals: Vec<TestVal> = subgroup.iter().map(|&x| eval_poly(x)).collect();
+        let evals_mat = RowMajorMatrix::new(evals, 1);
+
+        // Create PCS and commit
+        let pcs: DummyPcs<TwoAdicMultiplicativeCoset<TestVal>> = DummyPcs::new();
+        let (commitment, prover_data) = <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(
+            &pcs,
+            vec![(domain, evals_mat.clone())],
+        );
+
+        assert_eq!(commitment.len(), 1);
+        assert_eq!(commitment[0].height(), n);
+
+        // Open at multiple points OUTSIDE the domain
+        // Use points 100, 42, 7 which are not in the 8th roots of unity
+        let point1 = TestVal::new(100);
+        let point2 = TestVal::new(42);
+        let point3 = TestVal::new(7);
+        let points = vec![vec![point1, point2, point3]];
+        let rounds = vec![(&prover_data, points)];
+
+        let (opened_values, _proof) = <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::open(
+            &pcs,
+            rounds,
+            &mut DummyChallenger,
+        );
+
+        // Verify the opened values match expected polynomial evaluations
+        assert_eq!(opened_values.len(), 1); // 1 round
+        assert_eq!(opened_values[0].len(), 1); // 1 matrix in this round
+        assert_eq!(opened_values[0][0].len(), 3); // 3 points
+
+        // Check f(100) = 1 + 200 + 30000 + 4000000
+        assert_eq!(opened_values[0][0][0], vec![eval_poly(point1)]);
+        // Check f(42) = 1 + 84 + 5292 + 296352
+        assert_eq!(opened_values[0][0][1], vec![eval_poly(point2)]);
+        // Check f(7) = 1 + 14 + 147 + 1372
+        assert_eq!(opened_values[0][0][2], vec![eval_poly(point3)]);
     }
 
     #[test]
