@@ -8,32 +8,121 @@ use serde::{Deserialize, Serialize};
 use crate::params::{KzgError, KzgParams};
 use crate::util::{commit_column, quotient_and_eval, verify_single};
 
+/// KZG-based Merkle-tree-like commitment scheme (MMCS).
+///
+/// This structure implements the [`Mmcs`] trait from `p3-commit`, providing a vector
+/// commitment scheme using KZG. Unlike traditional Merkle trees that use hashing,
+/// this scheme uses polynomial commitments, offering algebraic properties useful
+/// in zero-knowledge proofs.
+///
+/// # Use Case
+///
+/// MMCS is particularly useful for committing to execution traces in STARK proofs.
+/// Each matrix represents a trace table, where:
+/// - Rows correspond to execution steps
+/// - Columns correspond to registers or state variables
+///
+/// # How It Works
+///
+/// 1. **Commitment**: Each column of a matrix is treated as a polynomial in
+///    coefficient form and committed using KZG
+/// 2. **Opening**: Individual rows can be opened by providing KZG opening proofs
+///    for all column polynomials at the row index
+/// 3. **Verification**: Uses pairing checks to verify the openings
+///
+/// # Example
+///
+/// ```rust
+/// use p3_bn254::Fr;
+/// use p3_kzg::KzgMmcs;
+/// use p3_commit::Mmcs;
+/// use p3_matrix::dense::RowMajorMatrix;
+/// use p3_field::PrimeCharacteristicRing;
+///
+/// let mmcs = KzgMmcs::new(1024, Fr::from_u64(999));
+///
+/// // Commit to a 4x2 matrix (4 rows, 2 columns)
+/// let values = vec![
+///     Fr::from_u64(1), Fr::from_u64(2),
+///     Fr::from_u64(3), Fr::from_u64(4),
+///     Fr::from_u64(5), Fr::from_u64(6),
+///     Fr::from_u64(7), Fr::from_u64(8),
+/// ];
+/// let matrix = RowMajorMatrix::new(values, 2);
+/// let (commitment, prover_data) = mmcs.commit(vec![matrix]);
+///
+/// // Open row 0
+/// let opening = mmcs.open_batch(0, &prover_data);
+/// ```
 #[derive(Clone)]
 pub struct KzgMmcs {
+    /// The KZG parameters (structured reference string).
     pub params: KzgParams,
 }
 
+/// Commitment to a batch of matrices in the MMCS scheme.
+///
+/// Contains KZG commitments for all columns of all committed matrices.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KzgMmcsCommitment {
+    /// Commitments to each matrix in the batch.
     pub matrices: Vec<MatrixCommitment>,
 }
 
+/// Opening proof for a batch of matrices at a specific index.
+///
+/// Contains KZG witnesses proving that the opened values are correct
+/// for all columns across all matrices.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KzgMmcsProof {
+    /// Witnesses organized by matrix, then by column.
+    ///
+    /// `witnesses[i][j]` is the KZG witness for opening the j-th column
+    /// of the i-th matrix at the specified row index.
     pub witnesses: Vec<Vec<G1>>,
 }
 
+/// Prover data for committed matrices.
+///
+/// Stores the original matrices so the prover can generate opening proofs.
 #[derive(Clone)]
 pub struct KzgMmcsProverData<M> {
+    /// The committed matrices in their original form.
     matrices: Vec<M>,
 }
 
+/// KZG commitment to a single matrix.
+///
+/// Each column is committed as a separate polynomial.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MatrixCommitment {
+    /// KZG commitments to each column polynomial.
+    ///
+    /// `columns[i]` is the commitment to the polynomial formed by
+    /// the i-th column of the matrix.
     pub columns: Vec<G1>,
 }
 
 impl KzgMmcs {
+    /// Creates a new KZG MMCS instance with the given parameters.
+    ///
+    /// **Warning**: This method generates a trusted setup for testing purposes only.
+    /// In production, use parameters from a proper trusted setup ceremony.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_degree` - Maximum degree of polynomials (= maximum matrix height - 1)
+    /// * `alpha` - Secret value for generating the SRS (toxic waste - discard after use!)
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use p3_bn254::Fr;
+    /// use p3_kzg::KzgMmcs;
+    /// use p3_field::PrimeCharacteristicRing;
+    ///
+    /// let mmcs = KzgMmcs::new(1024, Fr::from_u64(999));
+    /// ```
     #[must_use]
     pub fn new(max_degree: usize, alpha: Fr) -> Self {
         Self {

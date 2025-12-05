@@ -1,9 +1,56 @@
-//! BN254 curve implementation wrapping halo2curves
+//! BN254 curve group operations and pairing functionality
 //!
-//! This module provides wrapper types for the BN254 elliptic curve groups:
-//! - G1: Points on the base curve E(Fq)
-//! - G2: Points on the twisted curve E'(Fq2)
-//! - Gt: Elements in the target group (Fq12)
+//! This module provides wrapper types for the BN254 elliptic curve groups, wrapping the
+//! battle-tested `halo2curves` library with a Plonky3-compatible interface.
+//!
+//! # Curve Groups
+//!
+//! - **G1**: Points on the base curve E(Fq) where the curve equation is `y² = x³ + 3`
+//!   - Defined over the prime field Fq
+//!   - Used for commitments and proofs in most cryptographic protocols
+//!   - Supports efficient multi-scalar multiplication (MSM)
+//!
+//! - **G2**: Points on the twisted curve E'(Fq2)
+//!   - Defined over the quadratic extension field Fq2
+//!   - Used in pairing-based cryptography for verification keys
+//!   - Required for KZG verification
+//!
+//! - **Gt**: Elements in the target group (multiplicative group of Fq12)
+//!   - The output of the pairing operation e: G1 × G2 → Gt
+//!   - Elements live in the 12th-degree extension field
+//!   - Group operation is multiplication (corresponding to addition in the exponent)
+//!
+//! # Pairing Operations
+//!
+//! The module provides efficient bilinear pairing operations:
+//!
+//! - `pairing(P, Q)`: Computes the pairing e(P, Q) for P ∈ G1, Q ∈ G2
+//! - `multi_pairing(pairs)`: Efficiently computes a product of pairings
+//!
+//! The pairing satisfies the bilinearity property:
+//! - e(aP, bQ) = e(P, Q)^(ab) for scalars a, b
+//! - e(P₁ + P₂, Q) = e(P₁, Q) · e(P₂, Q)
+//!
+//! # Examples
+//!
+//! ```rust
+//! use p3_bn254::{Fr, G1, G2, pairing};
+//! use p3_field::PrimeCharacteristicRing;
+//!
+//! // Work with G1 points
+//! let g1_gen = G1::generator();
+//! let scalar = Fr::from_u64(42);
+//! let point = g1_gen.mul_scalar(scalar);
+//!
+//! // Multi-scalar multiplication
+//! let points = vec![g1_gen, g1_gen];
+//! let scalars = vec![Fr::from_u64(2), Fr::from_u64(3)];
+//! let result = G1::multi_exp(&points, &scalars); // 2*G + 3*G = 5*G
+//!
+//! // Pairing operations
+//! let g2_gen = G2::generator();
+//! let gt_element = pairing(g1_gen, g2_gen);
+//! ```
 
 extern crate alloc;
 use alloc::vec::Vec;

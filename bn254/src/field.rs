@@ -52,11 +52,55 @@ pub(crate) const BN254_MONTY_R_SQ: [u64; 4] = [
     0x0216d0b17f4e44a5,
 ];
 
-/// The BN254 curve scalar field prime, defined as `F_P` where `P = 21888242871839275222246405745257275088548364400416034343698204186575808495617`.
+/// The scalar field Fr of the BN254 elliptic curve.
+///
+/// This is the prime field with modulus `P = 21888242871839275222246405745257275088548364400416034343698204186575808495617`,
+/// which is the order of the group of rational points on the BN254 elliptic curve.
+///
+/// # Representation
+///
+/// Field elements are stored in **Montgomery form** to enable efficient modular multiplication.
+/// The Montgomery representation of an element `a` is `aR mod P`, where `R = 2^256 mod P`.
+/// This internal representation is transparent to users - all public operations work with
+/// standard field elements.
+///
+/// # Properties
+///
+/// - **Prime modulus**: P ≈ 2^254 (exactly 254 bits when represented in binary)
+/// - **Two-adicity**: The multiplicative group has a large 2-adic subgroup of size 2^28,
+///   making this field well-suited for efficient FFTs and polynomial operations
+/// - **Multiplicative generator**: 5 generates the entire multiplicative group F_P*
+///
+/// # Storage Layout
+///
+/// Elements are stored as 4 u64 limbs in little-endian order, representing a 256-bit value
+/// (though only 254 bits are actually used, as values must be < P).
+///
+/// # Examples
+///
+/// ```rust
+/// use p3_bn254::Fr;
+/// use p3_field::{Field, PrimeCharacteristicRing};
+///
+/// // Create field elements
+/// let a = Fr::from_u64(100);
+/// let b = Fr::from_u64(200);
+///
+/// // Field arithmetic
+/// let sum = a + b;
+/// let product = a * b;
+/// let inverse = a.try_inverse().unwrap();
+///
+/// assert_eq!(a * inverse, Fr::ONE);
+/// ```
 #[derive(Copy, Clone, Default, Eq, PartialEq)]
 #[must_use]
 pub struct Fr {
-    /// The MONTY form of the field element, a 254-bit integer less than `P` saved as a collection of u64's using a little-endian order.
+    /// The Montgomery form of the field element: a 254-bit integer less than P,
+    /// stored as 4 u64 limbs in little-endian order.
+    ///
+    /// This value represents `a * R mod P` where `a` is the true field element
+    /// and `R = 2^256 mod P` is the Montgomery constant.
     pub(crate) value: [u64; 4],
 }
 

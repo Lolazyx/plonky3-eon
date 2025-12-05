@@ -13,53 +13,161 @@ use serde::{Deserialize, Serialize};
 use crate::params::{KzgError, KzgParams};
 use crate::util::{commit_column, eval_poly, quotient_and_eval, verify_single};
 
-/// Commitment for a single matrix; contains one KZG commitment per column.
+/// KZG commitment for a single matrix.
+///
+/// Each column of the matrix is treated as a polynomial in coefficient form,
+/// and each polynomial is committed separately using KZG. This allows for
+/// efficient column-wise opening of the matrix.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MatrixCommitment {
+    /// KZG commitments to each column polynomial.
+    ///
+    /// For a matrix with `w` columns, this vector contains `w` G1 elements,
+    /// where `columns[i]` is the KZG commitment to the polynomial represented
+    /// by the i-th column.
     pub columns: Vec<G1>,
 }
 
-/// Commitment for a batch of matrices.
+/// Commitment to a batch of matrices.
+///
+/// In the PCS protocol, multiple matrices may be committed in a single round.
+/// This structure holds all matrix commitments for one commitment phase.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KzgCommitment {
+    /// Commitments to each matrix in the batch.
     pub matrices: Vec<MatrixCommitment>,
 }
 
-/// Prover data for a single committed matrix.
+/// Prover-side data for a committed matrix.
+///
+/// Contains all the information the prover needs to generate opening proofs
+/// for a committed matrix, including both evaluation and coefficient forms
+/// of the polynomials.
 #[derive(Clone)]
 pub struct MatrixProverData {
+    /// The two-adic coset domain over which the polynomials are evaluated.
     pub domain: TwoAdicMultiplicativeCoset<Fr>,
+
+    /// The matrix in evaluation form (values at domain points).
+    ///
+    /// Each row corresponds to an evaluation point in the domain,
+    /// and each column represents a polynomial's values.
     pub evals: RowMajorMatrix<Fr>,
+
+    /// The matrix in coefficient form (polynomial coefficients).
+    ///
+    /// Obtained by applying iDFT to the evaluation form. Used to
+    /// compute polynomial evaluations at arbitrary points and to
+    /// generate opening proofs.
     pub coeffs: RowMajorMatrix<Fr>,
 }
 
+/// Prover data for all committed matrices.
 pub type ProverData = Vec<MatrixProverData>;
 
-/// Proof for opening a batch of matrices in a single PCS round.
+/// Opening proof for multiple points on a single matrix.
+///
+/// Contains opening proofs for potentially multiple evaluation points,
+/// where each point may open multiple columns of the matrix.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MatrixProof {
+    /// Proofs for each evaluation point.
     pub points: Vec<PointProof>,
 }
 
-/// Proof for a single point; contains one witness per opened column.
+/// Opening proof for a single evaluation point.
+///
+/// In the KZG scheme, to prove that a polynomial `f(X)` evaluates to `v` at point `z`,
+/// the prover provides a witness `w = (f(X) - v) / (X - z)`, which is itself a polynomial
+/// commitment. This structure contains one such witness per opened column.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PointProof {
+    /// KZG witnesses (quotient polynomial commitments) for each opened column.
+    ///
+    /// For each column polynomial `f_i(X)` being opened at point `z` with claimed
+    /// value `v_i`, this contains the commitment to the quotient polynomial:
+    /// `q_i(X) = (f_i(X) - v_i) / (X - z)`
     pub witnesses: Vec<G1>,
 }
 
-/// Proof object matching the [`OpenedValues`] structure.
+/// Complete opening proof matching the [`OpenedValues`] structure.
+///
+/// The PCS protocol may involve multiple rounds of commitment and opening.
+/// This structure organizes all opening proofs hierarchically to match the
+/// structure of opened values.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct KzgProof {
+    /// Proofs organized by round, then by batch within each round.
+    ///
+    /// `rounds[i][j]` contains the proof for the j-th batch in the i-th round.
     pub rounds: Vec<Vec<MatrixProof>>,
 }
 
+/// KZG polynomial commitment scheme implementation.
+///
+/// This implements the [`Pcs`] trait from `p3-commit`, providing a complete
+/// polynomial commitment scheme using KZG commitments over the BN254 curve.
+///
+/// # How It Works
+///
+/// 1. **Commitment**: Polynomials are represented as matrices where each column
+///    is a polynomial in coefficient form. The scheme:
+///    - Takes matrices in evaluation form on two-adic cosets
+///    - Converts to coefficient form using iDFT
+///    - Commits to each column polynomial using KZG
+///
+/// 2. **Opening**: To prove evaluations at specific points:
+///    - Evaluates each column polynomial at the requested point
+///    - Computes quotient polynomials `q(X) = (f(X) - v) / (X - z)`
+///    - Commits to the quotient polynomials as witnesses
+///
+/// 3. **Verification**: Uses a pairing check to verify that the commitment,
+///    witness, and claimed evaluation are consistent:
+///    `e(C - v·G₁, G₂) = e(W, α·G₂ - z·G₂)`
+///
+/// # Example
+///
+/// ```rust
+/// use p3_bn254::Fr;
+/// use p3_kzg::KzgPcs;
+/// use p3_field::PrimeCharacteristicRing;
+///
+/// // Create a KZG PCS instance
+/// let max_degree = 1024;
+/// let alpha = Fr::from_u64(12345); // Testing only!
+/// let pcs = KzgPcs::new(max_degree, alpha);
+///
+/// // Use with Plonky3's PCS trait...
+/// ```
 #[derive(Clone)]
 pub struct KzgPcs {
+    /// The KZG parameters (structured reference string).
     pub params: KzgParams,
+
+    /// DFT implementation for converting between evaluation and coefficient forms.
     pub dft: Radix2Dit<Fr>,
 }
 
 impl KzgPcs {
+    /// Creates a new KZG PCS instance with the given parameters.
+    ///
+    /// **Warning**: This method generates a trusted setup for testing purposes only.
+    /// In production, use parameters from a proper trusted setup ceremony.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_degree` - Maximum degree of polynomials that can be committed
+    /// * `alpha` - Secret value for generating the SRS (toxic waste - discard after use!)
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use p3_bn254::Fr;
+    /// use p3_kzg::KzgPcs;
+    /// use p3_field::PrimeCharacteristicRing;
+    ///
+    /// let pcs = KzgPcs::new(1024, Fr::from_u64(999));
+    /// ```
     #[must_use]
     pub fn new(max_degree: usize, alpha: Fr) -> Self {
         Self {
