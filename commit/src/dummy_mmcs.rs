@@ -12,7 +12,7 @@ use crate::{BatchOpening, BatchOpeningRef, Mmcs};
 pub struct DummyMmcs;
 
 impl DummyMmcs {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
