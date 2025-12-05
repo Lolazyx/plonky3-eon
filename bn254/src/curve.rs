@@ -13,11 +13,14 @@ use halo2curves::bn256::{
     G1 as Halo2G1, G1Affine as Halo2G1Affine, G2 as Halo2G2, G2Affine as Halo2G2Affine,
     Gt as Halo2Gt,
 };
+use halo2curves::group::GroupEncoding;
 use halo2curves::group::{Curve, Group};
 use halo2curves::msm::msm_best;
 use halo2curves::pairing::{MillerLoopResult, MultiMillerLoop};
 
 use crate::Fr;
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A point on the BN254 G1 curve (base curve over Fq)
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -30,6 +33,38 @@ pub struct G2(pub(crate) Halo2G2);
 /// An element in the BN254 Gt group (target group of the pairing, elements in Fq12)
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Gt(pub(crate) Halo2Gt);
+
+impl Serialize for G1 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(self.0.to_affine().to_bytes().as_ref())
+    }
+}
+
+impl<'de> Deserialize<'de> for G1 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+        let repr: <Halo2G1Affine as GroupEncoding>::Repr = bytes.as_slice().into();
+        let affine = Option::<Halo2G1Affine>::from(Halo2G1Affine::from_bytes(&repr))
+            .ok_or_else(|| DeError::custom("Invalid G1 point"))?;
+        Ok(Self(Halo2G1::from(affine)))
+    }
+}
+
+impl Serialize for G2 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(self.0.to_affine().to_bytes().as_ref())
+    }
+}
+
+impl<'de> Deserialize<'de> for G2 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+        let repr: <Halo2G2Affine as GroupEncoding>::Repr = bytes.as_slice().into();
+        let affine = Option::<Halo2G2Affine>::from(Halo2G2Affine::from_bytes(&repr))
+            .ok_or_else(|| DeError::custom("Invalid G2 point"))?;
+        Ok(Self(Halo2G2::from(affine)))
+    }
+}
 
 // ================================
 // G1 Implementation

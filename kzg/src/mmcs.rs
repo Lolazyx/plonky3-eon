@@ -1,0 +1,175 @@
+use alloc::vec::Vec;
+
+use p3_bn254::{Fr, G1};
+use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
+use p3_matrix::{Dimensions, Matrix};
+use serde::{Deserialize, Serialize};
+
+use crate::params::{KzgError, KzgParams};
+use crate::util::{commit_column, quotient_and_eval, verify_single};
+
+#[derive(Clone)]
+pub struct KzgMmcs {
+    pub params: KzgParams,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct KzgMmcsCommitment {
+    pub matrices: Vec<MatrixCommitment>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct KzgMmcsProof {
+    pub witnesses: Vec<Vec<G1>>,
+}
+
+#[derive(Clone)]
+pub struct KzgMmcsProverData<M> {
+    matrices: Vec<M>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct MatrixCommitment {
+    pub columns: Vec<G1>,
+}
+
+impl KzgMmcs {
+    #[must_use]
+    pub fn new(max_degree: usize, alpha: Fr) -> Self {
+        Self {
+            params: KzgParams::new(max_degree, alpha),
+        }
+    }
+
+    fn commit_matrix<M: Matrix<Fr>>(&self, matrix: &M) -> MatrixCommitment {
+        let columns = (0..matrix.width())
+            .map(|col| {
+                let coeffs: Vec<_> = (0..matrix.height())
+                    .map(|r| matrix.row_slice(r).unwrap()[col])
+                    .collect();
+                commit_column(&self.params, &coeffs).unwrap()
+            })
+            .collect();
+        MatrixCommitment { columns }
+    }
+}
+
+impl Mmcs<Fr> for KzgMmcs {
+    type ProverData<M> = KzgMmcsProverData<M>;
+    type Commitment = KzgMmcsCommitment;
+    type Proof = KzgMmcsProof;
+    type Error = KzgError;
+
+    fn commit<M: Matrix<Fr>>(&self, inputs: Vec<M>) -> (Self::Commitment, Self::ProverData<M>) {
+        let mut matrices = Vec::with_capacity(inputs.len());
+        let mut commitments = Vec::with_capacity(inputs.len());
+
+        for mat in inputs {
+            let height = mat.height();
+            self.params
+                .ensure_supported(height.saturating_sub(1))
+                .unwrap();
+
+            commitments.push(self.commit_matrix(&mat));
+            matrices.push(mat);
+        }
+
+        (
+            KzgMmcsCommitment {
+                matrices: commitments,
+            },
+            KzgMmcsProverData { matrices },
+        )
+    }
+
+    fn open_batch<M: Matrix<Fr>>(
+        &self,
+        index: usize,
+        prover_data: &Self::ProverData<M>,
+    ) -> BatchOpening<Fr, Self> {
+        let max_height = prover_data
+            .matrices
+            .iter()
+            .map(Matrix::height)
+            .max()
+            .unwrap_or(0);
+        let log2_max_height = max_height.next_power_of_two().trailing_zeros() as usize;
+
+        let mut opened_values = Vec::new();
+        let mut witnesses = Vec::new();
+
+        for matrix in &prover_data.matrices {
+            let log2_height = matrix.height().next_power_of_two().trailing_zeros() as usize;
+            let local_index = if log2_max_height >= log2_height {
+                index >> (log2_max_height - log2_height)
+            } else {
+                index
+            } % matrix.height();
+
+            let point = Fr::new(local_index as u64);
+            let mut row = Vec::with_capacity(matrix.width());
+            let mut matrix_witnesses = Vec::with_capacity(matrix.width());
+            for col in 0..matrix.width() {
+                let coeffs: Vec<_> = (0..matrix.height())
+                    .map(|r| matrix.row_slice(r).unwrap()[col])
+                    .collect();
+                let (quotient, value) = quotient_and_eval(&coeffs, point);
+                row.push(value);
+                matrix_witnesses.push(commit_column(&self.params, &quotient).unwrap());
+            }
+            opened_values.push(row);
+            witnesses.push(matrix_witnesses);
+        }
+
+        BatchOpening::new(opened_values, KzgMmcsProof { witnesses })
+    }
+
+    fn get_matrices<'a, M: Matrix<Fr>>(&self, prover_data: &'a Self::ProverData<M>) -> Vec<&'a M> {
+        prover_data.matrices.iter().collect()
+    }
+
+    fn verify_batch(
+        &self,
+        commit: &Self::Commitment,
+        dimensions: &[Dimensions],
+        index: usize,
+        batch_opening: BatchOpeningRef<'_, Fr, Self>,
+    ) -> Result<(), Self::Error> {
+        let (opened_values, proof) = batch_opening.unpack();
+        if opened_values.len() != commit.matrices.len() {
+            return Err(KzgError::ProofShapeMismatch);
+        }
+
+        let max_height = dimensions.iter().map(|d| d.height).max().unwrap_or(0);
+        let log2_max_height = max_height.next_power_of_two().trailing_zeros() as usize;
+
+        for (((values, commitment), dims), witnesses) in opened_values
+            .iter()
+            .zip(&commit.matrices)
+            .zip(dimensions)
+            .zip(&proof.witnesses)
+        {
+            if values.len() != commitment.columns.len() || values.len() != witnesses.len() {
+                return Err(KzgError::ProofShapeMismatch);
+            }
+            self.params
+                .ensure_supported(dims.height.saturating_sub(1))?;
+
+            let log2_height = dims.height.next_power_of_two().trailing_zeros() as usize;
+            let local_index = if log2_max_height >= log2_height {
+                index >> (log2_max_height - log2_height)
+            } else {
+                index
+            } % dims.height;
+
+            let point = Fr::new(local_index as u64);
+            for ((value, commitment), witness) in
+                values.iter().zip(&commitment.columns).zip(witnesses)
+            {
+                verify_single(commitment, witness, *value, point, &self.params)?;
+            }
+        }
+
+        Ok(())
+    }
+}
