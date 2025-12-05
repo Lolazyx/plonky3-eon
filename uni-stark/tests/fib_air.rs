@@ -4,8 +4,6 @@ use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_bn254::{Bn254, Poseidon2Bn254};
 use p3_challenger::DuplexChallenger;
 use p3_commit::DummyPcs;
-use p3_dft::Radix2DitParallel;
-// No extension field needed for BN254
 use p3_field::{PrimeCharacteristicRing, coset::TwoAdicMultiplicativeCoset};
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
@@ -56,7 +54,11 @@ impl<AB: AirBuilderWithPublicValues> Air<AB> for FibonacciAir {
     }
 }
 
-pub fn generate_trace_rows<F: PrimeCharacteristicRing + Copy + Send + Sync>(a: u64, b: u64, n: usize) -> RowMajorMatrix<F> {
+pub fn generate_trace_rows<F: PrimeCharacteristicRing + Copy + Send + Sync>(
+    a: u64,
+    b: u64,
+    n: usize,
+) -> RowMajorMatrix<F> {
     assert!(n.is_power_of_two());
 
     let mut trace = RowMajorMatrix::new(F::zero_vec(n * NUM_FIBONACCI_COLS), NUM_FIBONACCI_COLS);
@@ -104,7 +106,6 @@ type Val = Bn254;
 type Perm = Poseidon2Bn254<3>;
 type Challenge = Val; // BN254 itself, no extension needed (degree 1)
 type Challenger = DuplexChallenger<Val, Perm, 3, 2>;
-type Dft = Radix2DitParallel<Val>;
 type Domain = TwoAdicMultiplicativeCoset<Val>;
 type Pcs = DummyPcs<Domain>;
 type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
@@ -123,13 +124,6 @@ fn test_public_value_impl(n: usize, x: u64, _log_final_poly_len: usize) {
     let proof = prove(&config, &FibonacciAir {}, trace, &pis);
     verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
 }
-
-// ZK test disabled - requires full MMCS/FRI implementation
-// #[test]
-// fn test_zk() {
-//     // This test would require MerkleTreeHidingMmcs and HidingFriPcs
-//     // which are not compatible with the simplified DummyPcs approach
-// }
 
 #[test]
 fn test_one_row_trace() {

@@ -2,8 +2,8 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use p3_challenger::CanSample;
-use p3_field::{ExtensionField, TwoAdicField};
 use p3_field::coset::TwoAdicMultiplicativeCoset;
+use p3_field::{ExtensionField, TwoAdicField};
 use p3_interpolation::interpolate_coset;
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
@@ -172,8 +172,8 @@ mod tests {
     use alloc::vec;
     use p3_bn254::Bn254;
     use p3_challenger::CanSample;
-    use p3_field::{Field, PrimeCharacteristicRing, TwoAdicField};
     use p3_field::coset::TwoAdicMultiplicativeCoset;
+    use p3_field::{Field, PrimeCharacteristicRing, TwoAdicField};
     use p3_matrix::dense::RowMajorMatrix;
     use p3_util::log2_strict_usize;
 
@@ -194,10 +194,7 @@ mod tests {
     fn test_polynomial_evaluation() {
         // Define polynomial f(x) = 1 + 2x + 3x^2 + 4x^3
         let eval_poly = |x: TestVal| -> TestVal {
-            TestVal::ONE +
-            x * TestVal::TWO +
-            x * x * TestVal::new(3) +
-            x * x * x * TestVal::new(4)
+            TestVal::ONE + x * TestVal::TWO + x * x * TestVal::new(3) + x * x * x * TestVal::new(4)
         };
 
         // Create a domain of size 8 (multiplicative subgroup, shift=1)
@@ -217,24 +214,29 @@ mod tests {
         let point = TestVal::new(100);
         let result = eval_poly_at_point_coset(&domain, &evals_mat, point);
         let expected = eval_poly(point);
-        assert_eq!(result, vec![expected], "f(100) should match direct evaluation");
+        assert_eq!(
+            result,
+            vec![expected],
+            "f(100) should match direct evaluation"
+        );
 
         // Test evaluation at x=42 (outside the domain)
         // f(42) = 1 + 84 + 5292 + 296352 = 301729
         let point2 = TestVal::new(42);
         let result2 = eval_poly_at_point_coset(&domain, &evals_mat, point2);
         let expected2 = eval_poly(point2);
-        assert_eq!(result2, vec![expected2], "f(42) should match direct evaluation");
+        assert_eq!(
+            result2,
+            vec![expected2],
+            "f(42) should match direct evaluation"
+        );
     }
 
     #[test]
     fn test_dummy_pcs_polynomial_opening() {
         // Define polynomial f(x) = 1 + 2x + 3x^2 + 4x^3
         let eval_poly = |x: TestVal| -> TestVal {
-            TestVal::ONE +
-            x * TestVal::TWO +
-            x * x * TestVal::new(3) +
-            x * x * x * TestVal::new(4)
+            TestVal::ONE + x * TestVal::TWO + x * x * TestVal::new(3) + x * x * x * TestVal::new(4)
         };
 
         // Create domain and polynomial evaluations
