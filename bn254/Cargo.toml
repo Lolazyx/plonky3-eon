@@ -32,5 +32,9 @@ zkhash = { git = "https://github.com/HorizenLabs/poseidon2" }
 name = "bench_field"
 harness = false
 
+[[bench]]
+name = "bench_curve"
+harness = false
+
 [lints]
 workspace = true

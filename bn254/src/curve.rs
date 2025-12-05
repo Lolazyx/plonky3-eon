@@ -394,6 +394,19 @@ pub fn fr_from_halo2(fr: halo2curves::bn256::Fr) -> Fr {
     unsafe { core::mem::transmute(fr) }
 }
 
+// Helper for Gt scalar multiplication (exponentiation in the multiplicative group)
+#[cfg(test)]
+impl Gt {
+    /// Scalar multiplication in Gt (exponentiation)
+    /// Computes self^scalar in the multiplicative group
+    fn mul_scalar_gt(&self, scalar: Fr) -> Self {
+        // Gt multiplication is done by exponentiation in the multiplicative group
+        // We need to compute self^scalar using halo2's built-in scalar multiplication
+        let halo2_fr = fr_to_halo2(scalar);
+        Self(self.0 * halo2_fr)
+    }
+}
+
 // ================================
 // Tests
 // ================================
@@ -558,18 +571,5 @@ mod tests {
         let result = G2::multi_exp(&[g2_2, g2_3], &[a, b]);
         let expected = g2.mul_scalar(Fr::from_u8(76));
         assert_eq!(result, expected);
-    }
-}
-
-// Helper for Gt scalar multiplication (exponentiation in the multiplicative group)
-#[cfg(test)]
-impl Gt {
-    /// Scalar multiplication in Gt (exponentiation)
-    /// Computes self^scalar in the multiplicative group
-    fn mul_scalar_gt(&self, scalar: Fr) -> Self {
-        // Gt multiplication is done by exponentiation in the multiplicative group
-        // We need to compute self^scalar using halo2's built-in scalar multiplication
-        let halo2_fr = fr_to_halo2(scalar);
-        Self(self.0 * halo2_fr)
     }
 }
