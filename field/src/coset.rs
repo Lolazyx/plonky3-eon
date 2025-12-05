@@ -12,9 +12,9 @@ use crate::{BoundedPowers, TwoAdicField};
 ///     coset::TwoAdicMultiplicativeCoset
 /// };
 /// # use itertools::Itertools;
-/// # use p3_baby_bear::BabyBear;
+/// # use p3_bn254::Bn254;
 /// #
-/// type F = BabyBear;
+/// type F = Bn254;
 /// let log_size = 3;
 /// let shift = F::from_u64(7);
 /// let mut coset = TwoAdicMultiplicativeCoset::new(shift, log_size).unwrap();

@@ -84,7 +84,7 @@ fn bowers_g_t<F: Field, A: Algebra<F>, const N: usize>(values: &mut [A; N], twid
 
 #[cfg(test)]
 mod tests {
-    use p3_baby_bear::BabyBear;
+    use p3_bn254::Bn254;
     use p3_dft::{NaiveDft, TwoAdicSubgroupDft};
     use p3_field::{Field, PrimeCharacteristicRing};
     use p3_symmetric::Permutation;
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn matches_naive() {
-        type F = BabyBear;
+        type F = Bn254;
         const N: usize = 8;
 
         let mut rng = SmallRng::seed_from_u64(1);
