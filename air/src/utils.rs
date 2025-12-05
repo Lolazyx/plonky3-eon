@@ -233,11 +233,11 @@ pub fn xor_32_shift<AB: AirBuilder>(
 mod tests {
     use alloc::vec;
 
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
 
     use super::*;
 
-    type F = Bn254;
+    type F = Fr;
 
     #[test]
     fn test_pack_bits_le_various_patterns() {

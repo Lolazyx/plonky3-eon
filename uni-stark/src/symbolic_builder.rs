@@ -336,24 +336,24 @@ where
 #[cfg(test)]
 mod tests {
     use p3_air::BaseAir;
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
 
     use super::*;
 
     #[derive(Debug)]
     struct MockAir {
-        constraints: Vec<SymbolicVariable<Bn254>>,
+        constraints: Vec<SymbolicVariable<Fr>>,
         width: usize,
     }
 
-    impl BaseAir<Bn254> for MockAir {
+    impl BaseAir<Fr> for MockAir {
         fn width(&self) -> usize {
             self.width
         }
     }
 
-    impl Air<SymbolicAirBuilder<Bn254>> for MockAir {
-        fn eval(&self, builder: &mut SymbolicAirBuilder<Bn254>) {
+    impl Air<SymbolicAirBuilder<Fr>> for MockAir {
+        fn eval(&self, builder: &mut SymbolicAirBuilder<Fr>) {
             for constraint in &self.constraints {
                 builder.assert_zero(*constraint);
             }
@@ -448,17 +448,17 @@ mod tests {
 
     #[test]
     fn test_symbolic_air_builder_initialization() {
-        let builder = SymbolicAirBuilder::<Bn254>::new(2, 4, 3, 0, 0);
+        let builder = SymbolicAirBuilder::<Fr>::new(2, 4, 3, 0, 0);
 
         let expected_main = [
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 0 }, 0),
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 0 }, 1),
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 0 }, 2),
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 0 }, 3),
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 1 }, 0),
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 1 }, 1),
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 1 }, 2),
-            SymbolicVariable::<Bn254>::new(Entry::Main { offset: 1 }, 3),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 0 }, 0),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 0 }, 1),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 0 }, 2),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 0 }, 3),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 1 }, 0),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 1 }, 1),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 1 }, 2),
+            SymbolicVariable::<Fr>::new(Entry::Main { offset: 1 }, 3),
         ];
 
         let builder_main = builder.main.values;
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn test_symbolic_air_builder_is_first_last_row() {
-        let builder = SymbolicAirBuilder::<Bn254>::new(2, 4, 3, 0, 0);
+        let builder = SymbolicAirBuilder::<Fr>::new(2, 4, 3, 0, 0);
 
         assert!(
             matches!(builder.is_first_row(), SymbolicExpression::IsFirstRow),
@@ -492,8 +492,8 @@ mod tests {
 
     #[test]
     fn test_symbolic_air_builder_assert_zero() {
-        let mut builder = SymbolicAirBuilder::<Bn254>::new(2, 4, 3, 0, 0);
-        let expr = SymbolicExpression::Constant(Bn254::new(5));
+        let mut builder = SymbolicAirBuilder::<Fr>::new(2, 4, 3, 0, 0);
+        let expr = SymbolicExpression::Constant(Fr::new(5));
         builder.assert_zero(expr);
 
         let constraints = builder.base_constraints();
@@ -502,7 +502,7 @@ mod tests {
         assert!(
             constraints
                 .iter()
-                .any(|x| matches!(x, SymbolicExpression::Constant(val) if *val == Bn254::new(5))),
+                .any(|x| matches!(x, SymbolicExpression::Constant(val) if *val == Fr::new(5))),
             "Constraint should match the asserted one"
         );
     }

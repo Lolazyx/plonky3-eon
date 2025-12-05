@@ -35,7 +35,7 @@ impl<F: TwoAdicField> TwoAdicSubgroupDft<F> for NaiveDft {
 mod tests {
     use alloc::vec;
 
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_field::{Field, PrimeCharacteristicRing};
     use p3_matrix::dense::RowMajorMatrix;
     use rand::SeedableRng;
@@ -43,7 +43,7 @@ mod tests {
 
     use crate::{NaiveDft, TwoAdicSubgroupDft};
 
-    type F = Bn254;
+    type F = Fr;
 
     #[test]
     fn basic() {

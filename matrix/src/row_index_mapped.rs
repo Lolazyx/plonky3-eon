@@ -158,8 +158,8 @@ mod tests {
     use alloc::vec::Vec;
 
     use itertools::Itertools;
-    use p3_bn254::Bn254;
-    // use p3_baby_bear::Bn254;
+    use p3_bn254::Fr;
+    // use p3_baby_bear::Fr;
     use p3_field::FieldArray;
 
     use super::*;
@@ -280,16 +280,13 @@ mod tests {
     #[test]
     fn test_horizontally_packed_row() {
         // Define the packed type with width 2
-        type Packed = FieldArray<Bn254, 2>;
+        type Packed = FieldArray<Fr, 2>;
 
-        // Create an inner matrix of Bn254 elements.
+        // Create an inner matrix of Fr elements.
         // Matrix layout:
         // [ 1  2 ]
         // [ 3  4 ]
-        let inner = RowMajorMatrix::new(
-            vec![Bn254::new(1), Bn254::new(2), Bn254::new(3), Bn254::new(4)],
-            2,
-        );
+        let inner = RowMajorMatrix::new(vec![Fr::new(1), Fr::new(2), Fr::new(3), Fr::new(4)], 2);
 
         // Apply a reverse row index mapping.
         let mapped_view = RowIndexMappedView {
@@ -304,7 +301,7 @@ mod tests {
         let packed: Vec<_> = packed_iter.collect();
 
         // Check the packed row values match reversed second row.
-        assert_eq!(packed, &[Packed::from([Bn254::new(3), Bn254::new(4)])]);
+        assert_eq!(packed, &[Packed::from([Fr::new(3), Fr::new(4)])]);
 
         // Check there are no suffix leftovers.
         assert!(suffix_iter.next().is_none());
@@ -313,15 +310,12 @@ mod tests {
     #[test]
     fn test_padded_horizontally_packed_row() {
         // Define a packed type with width 3
-        type Packed = FieldArray<Bn254, 3>;
+        type Packed = FieldArray<Fr, 3>;
 
-        // Create a 2x2 matrix of Bn254 elements:
+        // Create a 2x2 matrix of Fr elements:
         // [ 1  2 ]
         // [ 3  4 ]
-        let inner = RowMajorMatrix::new(
-            vec![Bn254::new(1), Bn254::new(2), Bn254::new(3), Bn254::new(4)],
-            2,
-        );
+        let inner = RowMajorMatrix::new(vec![Fr::new(1), Fr::new(2), Fr::new(3), Fr::new(4)], 2);
 
         // Use identity mapping (rows remain unchanged).
         let mapped_view = RowIndexMappedView {
@@ -337,7 +331,7 @@ mod tests {
         // Verify the packed result includes padding with zero at the end.
         assert_eq!(
             packed,
-            vec![Packed::from([Bn254::new(3), Bn254::new(4), Bn254::new(0),])]
+            vec![Packed::from([Fr::new(3), Fr::new(4), Fr::new(0),])]
         );
     }
 

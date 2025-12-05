@@ -1,11 +1,11 @@
 mod coset {
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_field::coset::TwoAdicMultiplicativeCoset;
     use p3_field::{PrimeCharacteristicRing, TwoAdicField};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    type F = Bn254;
+    type F = Fr;
 
     #[test]
     // Checks that a coset of the maximum size allowed by the field (implementation)

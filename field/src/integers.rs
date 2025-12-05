@@ -129,7 +129,7 @@ macro_rules! quotient_map_small_internals {
 /// The range of acceptable integer types depends on the size of the field:
 /// - For 31 bit fields, `SmallInt = u8, u16, i8, i16`.
 /// - For 64 bit fields, `SmallInt = u8, u16, u32, i8, i16, i32`.
-/// - For large fields (E.g. `Bn254`), `SmallInt` can be anything except for the largest primitive integer type `u128/i128`
+/// - For large fields (E.g. `Fr`), `SmallInt` can be anything except for the largest primitive integer type `u128/i128`
 ///
 /// This macro accepts 3 inputs.
 /// - The name of the prime field `P`

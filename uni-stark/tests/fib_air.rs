@@ -1,7 +1,7 @@
 use core::borrow::Borrow;
 
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
-use p3_bn254::{Bn254, Poseidon2Bn254};
+use p3_bn254::{Fr, Poseidon2Bn254};
 use p3_challenger::DuplexChallenger;
 use p3_commit::DummyPcs;
 use p3_field::{PrimeCharacteristicRing, coset::TwoAdicMultiplicativeCoset};
@@ -102,7 +102,7 @@ impl<F> Borrow<FibonacciRow<F>> for [F] {
     }
 }
 
-type Val = Bn254;
+type Val = Fr;
 type Perm = Poseidon2Bn254<3>;
 type Challenge = Val; // BN254 itself, no extension needed (degree 1)
 type Challenger = DuplexChallenger<Val, Perm, 3, 2>;
@@ -119,7 +119,7 @@ fn test_public_value_impl(n: usize, x: u64, _log_final_poly_len: usize) {
     let challenger = Challenger::new(perm);
 
     let config = MyConfig::new(pcs, challenger);
-    let pis = vec![Bn254::ZERO, Bn254::ONE, Bn254::from_u64(x)];
+    let pis = vec![Fr::ZERO, Fr::ONE, Fr::from_u64(x)];
 
     let proof = prove(&config, &FibonacciAir {}, trace, &pis);
     verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
@@ -147,9 +147,9 @@ fn test_incorrect_public_value() {
     let challenger = Challenger::new(perm);
     let config = MyConfig::new(pcs, challenger);
     let pis = vec![
-        Bn254::ZERO,
-        Bn254::ONE,
-        Bn254::from_u64(123_123), // incorrect result
+        Fr::ZERO,
+        Fr::ONE,
+        Fr::from_u64(123_123), // incorrect result
     ];
     prove(&config, &FibonacciAir {}, trace, &pis);
 }

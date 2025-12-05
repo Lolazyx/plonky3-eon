@@ -55,12 +55,12 @@ pub(crate) const BN254_MONTY_R_SQ: [u64; 4] = [
 /// The BN254 curve scalar field prime, defined as `F_P` where `P = 21888242871839275222246405745257275088548364400416034343698204186575808495617`.
 #[derive(Copy, Clone, Default, Eq, PartialEq)]
 #[must_use]
-pub struct Bn254 {
+pub struct Fr {
     /// The MONTY form of the field element, a 254-bit integer less than `P` saved as a collection of u64's using a little-endian order.
     pub(crate) value: [u64; 4],
 }
 
-impl Bn254 {
+impl Fr {
     /// Creates a new BN254 field element from a u64 value.
     ///
     /// This is a convenience function equivalent to using `from_u64`.
@@ -72,7 +72,7 @@ impl Bn254 {
         Self::new_monty(monty_mul(BN254_MONTY_R_SQ, inner))
     }
 
-    /// Convert a constant u64 array into a constant Bn254 array.
+    /// Convert a constant u64 array into a constant Fr array.
     #[inline]
     pub fn new_array<const N: usize>(input: [u64; N]) -> [Self; N] {
         let mut output = [Self::ZERO; N];
@@ -141,7 +141,7 @@ impl Bn254 {
     }
 }
 
-impl Serialize for Bn254 {
+impl Serialize for Fr {
     /// Serializes to raw bytes, which correspond to the Montgomery representation of the field element.
     #[inline]
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -149,7 +149,7 @@ impl Serialize for Bn254 {
     }
 }
 
-impl<'de> Deserialize<'de> for Bn254 {
+impl<'de> Deserialize<'de> for Fr {
     /// Deserializes from raw bytes, which correspond to the Montgomery representation of the field element.
     /// Performs a check that the deserialized field element corresponds to a value less than the field modulus, and
     /// returns an error otherwise.
@@ -162,9 +162,9 @@ impl<'de> Deserialize<'de> for Bn254 {
     }
 }
 
-impl Packable for Bn254 {}
+impl Packable for Fr {}
 
-impl Hash for Bn254 {
+impl Hash for Fr {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         for byte in self.value.as_ref() {
@@ -173,35 +173,35 @@ impl Hash for Bn254 {
     }
 }
 
-impl Ord for Bn254 {
+impl Ord for Fr {
     #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.value.iter().rev().cmp(other.value.iter().rev())
     }
 }
 
-impl PartialOrd for Bn254 {
+impl PartialOrd for Fr {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Display for Bn254 {
+impl Display for Fr {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         core::fmt::Display::fmt(&self.as_canonical_biguint(), f)
     }
 }
 
-impl Debug for Bn254 {
+impl Debug for Fr {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         core::fmt::Debug::fmt(&self.as_canonical_biguint(), f)
     }
 }
 
-impl PrimeCharacteristicRing for Bn254 {
+impl PrimeCharacteristicRing for Fr {
     type PrimeSubfield = Self;
 
     const ZERO: Self = Self::new_monty([0, 0, 0, 0]);
@@ -250,12 +250,12 @@ impl PrimeCharacteristicRing for Bn254 {
 /// Degree of the smallest permutation polynomial for BN254.
 ///
 /// As p - 1 is divisible by 2 and 3 the smallest choice for a degree D satisfying gcd(p - 1, D) = 1 is 5.
-impl InjectiveMonomial<5> for Bn254 {}
+impl InjectiveMonomial<5> for Fr {}
 
 // TODO: Implement PermutationMonomial<5> for Bn254Fr.
 // Not a priority given how slow (and unused) this will be.
 
-impl RawDataSerializable for Bn254 {
+impl RawDataSerializable for Fr {
     const NUM_BYTES: usize = 32;
 
     #[allow(refining_impl_trait)]
@@ -312,7 +312,7 @@ impl RawDataSerializable for Bn254 {
     }
 }
 
-impl Field for Bn254 {
+impl Field for Fr {
     type Packing = Self;
 
     /// The Montgomery form of the BN254 field element 5 which generates the multiplicative group.
@@ -354,10 +354,10 @@ impl Field for Bn254 {
     }
 }
 
-quotient_map_small_int!(Bn254, u128, [u8, u16, u32, u64]);
-quotient_map_small_int!(Bn254, i128, [i8, i16, i32, i64]);
+quotient_map_small_int!(Fr, u128, [u8, u16, u32, u64]);
+quotient_map_small_int!(Fr, i128, [i8, i16, i32, i64]);
 
-impl QuotientMap<u128> for Bn254 {
+impl QuotientMap<u128> for Fr {
     /// Due to the size of the `BN254` prime, the input value is always canonical.
     #[inline]
     fn from_int(int: u128) -> Self {
@@ -382,7 +382,7 @@ impl QuotientMap<u128> for Bn254 {
     }
 }
 
-impl QuotientMap<i128> for Bn254 {
+impl QuotientMap<i128> for Fr {
     /// Due to the size of the `BN254` prime, the input value is always canonical.
     #[inline]
     fn from_int(int: i128) -> Self {
@@ -407,7 +407,7 @@ impl QuotientMap<i128> for Bn254 {
     }
 }
 
-impl PrimeField for Bn254 {
+impl PrimeField for Fr {
     #[inline]
     fn as_canonical_biguint(&self) -> BigUint {
         // `monty_mul` strips out a factor of `R` so multiplying by `1` converts a montgomery
@@ -417,7 +417,7 @@ impl PrimeField for Bn254 {
     }
 }
 
-impl Add for Bn254 {
+impl Add for Fr {
     type Output = Self;
 
     #[inline]
@@ -432,7 +432,7 @@ impl Add for Bn254 {
 
         // If output is bigger than BN254_PRIME, we should subtract BN254_PRIME from it.
         // TODO: Can we avoid this subtraction in some cases? Might make things faster.
-        // Currently subtraction of Bn254 elements is faster than addition as we don't need to
+        // Currently subtraction of Fr elements is faster than addition as we don't need to
         // do both an addition and a subtraction in both cases.
         let (sum_corr, underflow) = wrapping_sub(sum, BN254_PRIME);
 
@@ -444,7 +444,7 @@ impl Add for Bn254 {
     }
 }
 
-impl Sub for Bn254 {
+impl Sub for Fr {
     type Output = Self;
 
     #[inline]
@@ -463,7 +463,7 @@ impl Sub for Bn254 {
     }
 }
 
-impl Neg for Bn254 {
+impl Neg for Fr {
     type Output = Self;
 
     #[inline]
@@ -472,7 +472,7 @@ impl Neg for Bn254 {
     }
 }
 
-impl Mul for Bn254 {
+impl Mul for Fr {
     type Output = Self;
 
     #[inline]
@@ -481,15 +481,15 @@ impl Mul for Bn254 {
     }
 }
 
-impl_add_assign!(Bn254);
-impl_sub_assign!(Bn254);
-impl_mul_methods!(Bn254);
-ring_sum!(Bn254);
-impl_div_methods!(Bn254, Bn254);
+impl_add_assign!(Fr);
+impl_sub_assign!(Fr);
+impl_mul_methods!(Fr);
+ring_sum!(Fr);
+impl_div_methods!(Fr, Fr);
 
-impl Distribution<Bn254> for StandardUniform {
+impl Distribution<Fr> for StandardUniform {
     #[inline]
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Bn254 {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fr {
         // Simple implementation of rejection sampling:
         loop {
             let mut trial_element: [u8; 32] = rng.random();
@@ -498,7 +498,7 @@ impl Distribution<Bn254> for StandardUniform {
             // `from_bytes` expects little endian input, so we adjust byte 31:
             trial_element[31] &= (1_u8 << 6) - 1;
 
-            let x = Bn254::from_bytes_monty(&trial_element);
+            let x = Fr::from_bytes_monty(&trial_element);
             if let Some(val) = x {
                 return val;
             }
@@ -516,7 +516,7 @@ const TWO_ADIC_GENERATOR: [u64; 4] = [
     0x1860ef942963f9e7,
 ];
 
-impl TwoAdicField for Bn254 {
+impl TwoAdicField for Fr {
     const TWO_ADICITY: usize = 28;
 
     #[inline]
@@ -535,7 +535,7 @@ mod tests {
 
     use super::*;
 
-    type F = Bn254;
+    type F = Fr;
 
     #[test]
     fn test_bn254fr() {
@@ -583,8 +583,8 @@ mod tests {
         test_field_json_serialization(&[f_100, f_1, f_2, f_r_minus_1, f_r_minus_2]);
     }
 
-    const ZERO: Bn254 = Bn254::ZERO;
-    const ONE: Bn254 = Bn254::ONE;
+    const ZERO: Fr = Fr::ZERO;
+    const ONE: Fr = Fr::ONE;
 
     // Get the prime factorization of the order of the multiplicative group.
     // i.e. the prime factorization of P - 1.
@@ -603,11 +603,11 @@ mod tests {
         ]
     }
     test_field!(
-        crate::Bn254,
+        crate::Fr,
         &[super::ZERO],
         &[super::ONE],
         &super::multiplicative_group_prime_factorization()
     );
 
-    test_prime_field!(crate::Bn254);
+    test_prime_field!(crate::Fr);
 }

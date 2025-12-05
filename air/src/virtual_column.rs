@@ -201,11 +201,11 @@ impl<F: Field> VirtualPairCol<F> {
 
 #[cfg(test)]
 mod tests {
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
 
     use super::*;
 
-    type F = Bn254;
+    type F = Fr;
 
     #[test]
     fn test_pair_col_get_main_and_preprocessed() {

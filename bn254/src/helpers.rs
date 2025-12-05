@@ -212,7 +212,7 @@ const BN254_PRIME_U128: [u128; 2] = [
     0x30644e72e131a029b85045b68181585d,
 ];
 
-/// Efficiently halve a Bn254 element.
+/// Efficiently halve a Fr element.
 #[inline]
 pub(crate) const fn halve_bn254(mut input: [u64; 4]) -> [u64; 4] {
     // Seems to be a little faster to convert into u128s.

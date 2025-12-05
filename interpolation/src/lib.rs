@@ -131,14 +131,14 @@ mod tests {
     use alloc::vec;
     use alloc::vec::Vec;
 
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_field::{Field, PrimeCharacteristicRing, TwoAdicField, batch_multiplicative_inverse};
     use p3_matrix::dense::RowMajorMatrix;
     use p3_util::log2_strict_usize;
 
     use crate::{interpolate_coset, interpolate_coset_with_precomputation, interpolate_subgroup};
 
-    type F = Bn254;
+    type F = Fr;
 
     /// Evaluate polynomial x^2 + 2x + 3 at point x
     fn eval_poly(x: F) -> F {

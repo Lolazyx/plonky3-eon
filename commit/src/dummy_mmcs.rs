@@ -195,11 +195,11 @@ impl<T: Send + Sync + Clone + Serialize + DeserializeOwned> Mmcs<T> for DummyMmc
 mod tests {
     use super::*;
     use alloc::vec;
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_field::PrimeCharacteristicRing;
     use p3_matrix::dense::RowMajorMatrix;
 
-    type TestField = Bn254;
+    type TestField = Fr;
 
     #[test]
     fn test_dummy_mmcs_commit_single_matrix() {

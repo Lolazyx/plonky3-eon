@@ -1,5 +1,5 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use p3_bn254::Bn254;
+use p3_bn254::Fr;
 use p3_dft::{Radix2Bowers, Radix2DFTSmallBatch, Radix2Dit, Radix2DitParallel, TwoAdicSubgroupDft};
 use p3_field::TwoAdicField;
 use p3_matrix::dense::RowMajorMatrix;
@@ -14,16 +14,16 @@ fn bench_fft(c: &mut Criterion) {
 
     const BATCH_SIZE: usize = 256;
 
-    fft::<Bn254, Radix2DFTSmallBatch<_>, BATCH_SIZE>(c, log_sizes);
-    fft::<Bn254, Radix2Dit<_>, BATCH_SIZE>(c, log_sizes);
-    fft::<Bn254, Radix2Bowers, BATCH_SIZE>(c, log_sizes);
-    fft::<Bn254, Radix2DitParallel<_>, BATCH_SIZE>(c, log_sizes);
+    fft::<Fr, Radix2DFTSmallBatch<_>, BATCH_SIZE>(c, log_sizes);
+    fft::<Fr, Radix2Dit<_>, BATCH_SIZE>(c, log_sizes);
+    fft::<Fr, Radix2Bowers, BATCH_SIZE>(c, log_sizes);
+    fft::<Fr, Radix2DitParallel<_>, BATCH_SIZE>(c, log_sizes);
 
-    ifft::<Bn254, Radix2Dit<_>, BATCH_SIZE>(c, log_sizes);
+    ifft::<Fr, Radix2Dit<_>, BATCH_SIZE>(c, log_sizes);
 
-    coset_lde::<Bn254, Radix2Dit<_>, BATCH_SIZE>(c, log_sizes);
-    coset_lde::<Bn254, Radix2Bowers, BATCH_SIZE>(c, log_sizes);
-    coset_lde::<Bn254, Radix2DitParallel<_>, BATCH_SIZE>(c, log_sizes);
+    coset_lde::<Fr, Radix2Dit<_>, BATCH_SIZE>(c, log_sizes);
+    coset_lde::<Fr, Radix2Bowers, BATCH_SIZE>(c, log_sizes);
+    coset_lde::<Fr, Radix2DitParallel<_>, BATCH_SIZE>(c, log_sizes);
 }
 
 fn fft<F, Dft, const BATCH_SIZE: usize>(c: &mut Criterion, log_sizes: &[usize])

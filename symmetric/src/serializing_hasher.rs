@@ -104,7 +104,7 @@ where
 mod tests {
     use core::array;
 
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
 
     use crate::{CryptographicHasher, SerializingHasher};
 
@@ -184,10 +184,10 @@ mod tests {
     fn test_parallel_hashers() {
         let mock_hash = MockHasher {};
         let hasher = SerializingHasher::new(mock_hash);
-        let input: [Bn254; 256] = Bn254::new_array(array::from_fn(|x| x as u64));
+        let input: [Fr; 256] = Fr::new_array(array::from_fn(|x| x as u64));
 
-        let parallel_input: [[Bn254; 4]; 64] = unsafe { core::mem::transmute(input) };
-        let unzipped_input: [[Bn254; 64]; 4] = array::from_fn(|i| parallel_input.map(|x| x[i]));
+        let parallel_input: [[Fr; 4]; 64] = unsafe { core::mem::transmute(input) };
+        let unzipped_input: [[Fr; 64]; 4] = array::from_fn(|i| parallel_input.map(|x| x[i]));
 
         let u8_output_parallel: [[u8; 4]; 4] = hasher.hash_iter(parallel_input);
         let u8_output_individual: [[u8; 4]; 4] = unzipped_input.map(|x| hasher.hash_iter(x));

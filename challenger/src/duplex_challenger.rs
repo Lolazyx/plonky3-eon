@@ -231,7 +231,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_field::PrimeCharacteristicRing;
     use p3_symmetric::Permutation;
 
@@ -240,7 +240,7 @@ mod tests {
     const WIDTH: usize = 3;
     const RATE: usize = 2;
 
-    type G = Bn254;
+    type G = Fr;
 
     #[derive(Clone)]
     struct TestPermutation {}

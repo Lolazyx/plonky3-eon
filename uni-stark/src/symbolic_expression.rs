@@ -15,7 +15,7 @@ where
     BinomialExtensionField<F, D>: ExtensionField<F>,
 {
     /// Generic implementation for ANY field F using a [`BinomialExtensionField`].
-    /// This works for Bn254, KoalaBear, Mersenne31, and any future field
+    /// This works for Fr, KoalaBear, Mersenne31, and any future field
     /// without modifying this crate.
     ///
     /// Since [`BinomialExtensionField<F, D>`] is always a distinct type from `F`,
@@ -342,14 +342,14 @@ mod tests {
     use alloc::vec;
     use alloc::vec::Vec;
 
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
 
     use super::*;
     use crate::Entry;
 
     #[test]
     fn test_symbolic_expression_degree_multiple() {
-        let constant_expr = SymbolicExpression::<Bn254>::Constant(Bn254::new(5));
+        let constant_expr = SymbolicExpression::<Fr>::Constant(Fr::new(5));
         assert_eq!(
             constant_expr.degree_multiple(),
             0,
@@ -374,7 +374,7 @@ mod tests {
             "Preprocessed variable should have degree 1"
         );
 
-        let permutation_var = SymbolicExpression::Variable(SymbolicVariable::<Bn254>::new(
+        let permutation_var = SymbolicExpression::Variable(SymbolicVariable::<Fr>::new(
             Entry::Permutation { offset: 0 },
             3,
         ));
@@ -385,7 +385,7 @@ mod tests {
         );
 
         let public_var =
-            SymbolicExpression::Variable(SymbolicVariable::<Bn254>::new(Entry::Public, 4));
+            SymbolicExpression::Variable(SymbolicVariable::<Fr>::new(Entry::Public, 4));
         assert_eq!(
             public_var.degree_multiple(),
             0,
@@ -393,35 +393,35 @@ mod tests {
         );
 
         let challenge_var =
-            SymbolicExpression::Variable(SymbolicVariable::<Bn254>::new(Entry::Challenge, 5));
+            SymbolicExpression::Variable(SymbolicVariable::<Fr>::new(Entry::Challenge, 5));
         assert_eq!(
             challenge_var.degree_multiple(),
             0,
             "Challenge variable should have degree 0"
         );
 
-        let is_first_row = SymbolicExpression::<Bn254>::IsFirstRow;
+        let is_first_row = SymbolicExpression::<Fr>::IsFirstRow;
         assert_eq!(
             is_first_row.degree_multiple(),
             1,
             "IsFirstRow should have degree 1"
         );
 
-        let is_last_row = SymbolicExpression::<Bn254>::IsLastRow;
+        let is_last_row = SymbolicExpression::<Fr>::IsLastRow;
         assert_eq!(
             is_last_row.degree_multiple(),
             1,
             "IsLastRow should have degree 1"
         );
 
-        let is_transition = SymbolicExpression::<Bn254>::IsTransition;
+        let is_transition = SymbolicExpression::<Fr>::IsTransition;
         assert_eq!(
             is_transition.degree_multiple(),
             0,
             "IsTransition should have degree 0"
         );
 
-        let add_expr = SymbolicExpression::<Bn254>::Add {
+        let add_expr = SymbolicExpression::<Fr>::Add {
             x: Arc::new(variable_expr.clone()),
             y: Arc::new(preprocessed_var.clone()),
             degree_multiple: 1,
@@ -432,7 +432,7 @@ mod tests {
             "Addition should take max degree of inputs"
         );
 
-        let sub_expr = SymbolicExpression::<Bn254>::Sub {
+        let sub_expr = SymbolicExpression::<Fr>::Sub {
             x: Arc::new(variable_expr.clone()),
             y: Arc::new(preprocessed_var.clone()),
             degree_multiple: 1,
@@ -443,7 +443,7 @@ mod tests {
             "Subtraction should take max degree of inputs"
         );
 
-        let neg_expr = SymbolicExpression::<Bn254>::Neg {
+        let neg_expr = SymbolicExpression::<Fr>::Neg {
             x: Arc::new(variable_expr.clone()),
             degree_multiple: 1,
         };
@@ -453,7 +453,7 @@ mod tests {
             "Negation should keep the degree"
         );
 
-        let mul_expr = SymbolicExpression::<Bn254>::Mul {
+        let mul_expr = SymbolicExpression::<Fr>::Mul {
             x: Arc::new(variable_expr),
             y: Arc::new(preprocessed_var),
             degree_multiple: 2,
@@ -467,33 +467,33 @@ mod tests {
 
     #[test]
     fn test_addition_of_constants() {
-        let a = SymbolicExpression::Constant(Bn254::new(3));
-        let b = SymbolicExpression::Constant(Bn254::new(4));
+        let a = SymbolicExpression::Constant(Fr::new(3));
+        let b = SymbolicExpression::Constant(Fr::new(4));
         let result = a + b;
         match result {
-            SymbolicExpression::Constant(val) => assert_eq!(val, Bn254::new(7)),
+            SymbolicExpression::Constant(val) => assert_eq!(val, Fr::new(7)),
             _ => panic!("Addition of constants did not simplify correctly"),
         }
     }
 
     #[test]
     fn test_subtraction_of_constants() {
-        let a = SymbolicExpression::Constant(Bn254::new(10));
-        let b = SymbolicExpression::Constant(Bn254::new(4));
+        let a = SymbolicExpression::Constant(Fr::new(10));
+        let b = SymbolicExpression::Constant(Fr::new(4));
         let result = a - b;
         match result {
-            SymbolicExpression::Constant(val) => assert_eq!(val, Bn254::new(6)),
+            SymbolicExpression::Constant(val) => assert_eq!(val, Fr::new(6)),
             _ => panic!("Subtraction of constants did not simplify correctly"),
         }
     }
 
     #[test]
     fn test_negation() {
-        let a = SymbolicExpression::Constant(Bn254::new(7));
+        let a = SymbolicExpression::Constant(Fr::new(7));
         let result = -a;
         match result {
             SymbolicExpression::Constant(val) => {
-                assert_eq!(val, Bn254::NEG_ONE * Bn254::new(7));
+                assert_eq!(val, Fr::NEG_ONE * Fr::new(7));
             }
             _ => panic!("Negation did not work correctly"),
         }
@@ -501,25 +501,21 @@ mod tests {
 
     #[test]
     fn test_multiplication_of_constants() {
-        let a = SymbolicExpression::Constant(Bn254::new(3));
-        let b = SymbolicExpression::Constant(Bn254::new(5));
+        let a = SymbolicExpression::Constant(Fr::new(3));
+        let b = SymbolicExpression::Constant(Fr::new(5));
         let result = a * b;
         match result {
-            SymbolicExpression::Constant(val) => assert_eq!(val, Bn254::new(15)),
+            SymbolicExpression::Constant(val) => assert_eq!(val, Fr::new(15)),
             _ => panic!("Multiplication of constants did not simplify correctly"),
         }
     }
 
     #[test]
     fn test_degree_multiple_for_addition() {
-        let a = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            1,
-        ));
-        let b = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            2,
-        ));
+        let a =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 1));
+        let b =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 2));
         let result = a + b;
         match result {
             SymbolicExpression::Add {
@@ -541,14 +537,10 @@ mod tests {
 
     #[test]
     fn test_degree_multiple_for_multiplication() {
-        let a = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            1,
-        ));
-        let b = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            2,
-        ));
+        let a =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 1));
+        let b =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 2));
         let result = a * b;
 
         match result {
@@ -580,13 +572,13 @@ mod tests {
     #[test]
     fn test_sum_operator() {
         let expressions = vec![
-            SymbolicExpression::Constant(Bn254::new(2)),
-            SymbolicExpression::Constant(Bn254::new(3)),
-            SymbolicExpression::Constant(Bn254::new(5)),
+            SymbolicExpression::Constant(Fr::new(2)),
+            SymbolicExpression::Constant(Fr::new(3)),
+            SymbolicExpression::Constant(Fr::new(5)),
         ];
-        let result: SymbolicExpression<Bn254> = expressions.into_iter().sum();
+        let result: SymbolicExpression<Fr> = expressions.into_iter().sum();
         match result {
-            SymbolicExpression::Constant(val) => assert_eq!(val, Bn254::new(10)),
+            SymbolicExpression::Constant(val) => assert_eq!(val, Fr::new(10)),
             _ => panic!("Sum did not produce correct result"),
         }
     }
@@ -594,13 +586,13 @@ mod tests {
     #[test]
     fn test_product_operator() {
         let expressions = vec![
-            SymbolicExpression::Constant(Bn254::new(2)),
-            SymbolicExpression::Constant(Bn254::new(3)),
-            SymbolicExpression::Constant(Bn254::new(4)),
+            SymbolicExpression::Constant(Fr::new(2)),
+            SymbolicExpression::Constant(Fr::new(3)),
+            SymbolicExpression::Constant(Fr::new(4)),
         ];
-        let result: SymbolicExpression<Bn254> = expressions.into_iter().product();
+        let result: SymbolicExpression<Fr> = expressions.into_iter().product();
         match result {
-            SymbolicExpression::Constant(val) => assert_eq!(val, Bn254::new(24)),
+            SymbolicExpression::Constant(val) => assert_eq!(val, Fr::new(24)),
             _ => panic!("Product did not produce correct result"),
         }
     }
@@ -608,12 +600,12 @@ mod tests {
     #[test]
     fn test_default_is_zero() {
         // Default should produce ZERO constant.
-        let expr: SymbolicExpression<Bn254> = Default::default();
+        let expr: SymbolicExpression<Fr> = Default::default();
 
         // Verify it matches the zero constant.
         assert!(matches!(
             expr,
-            SymbolicExpression::Constant(c) if c == Bn254::ZERO
+            SymbolicExpression::Constant(c) if c == Fr::ZERO
         ));
     }
 
@@ -621,36 +613,36 @@ mod tests {
     fn test_ring_constants() {
         // ZERO is a Constant variant wrapping the field's zero element.
         assert!(matches!(
-            SymbolicExpression::<Bn254>::ZERO,
-            SymbolicExpression::Constant(c) if c == Bn254::ZERO
+            SymbolicExpression::<Fr>::ZERO,
+            SymbolicExpression::Constant(c) if c == Fr::ZERO
         ));
 
         // ONE is a Constant variant wrapping the field's one element.
         assert!(matches!(
-            SymbolicExpression::<Bn254>::ONE,
-            SymbolicExpression::Constant(c) if c == Bn254::ONE
+            SymbolicExpression::<Fr>::ONE,
+            SymbolicExpression::Constant(c) if c == Fr::ONE
         ));
 
         // TWO is a Constant variant wrapping the field's two element.
         assert!(matches!(
-            SymbolicExpression::<Bn254>::TWO,
-            SymbolicExpression::Constant(c) if c == Bn254::TWO
+            SymbolicExpression::<Fr>::TWO,
+            SymbolicExpression::Constant(c) if c == Fr::TWO
         ));
 
         // NEG_ONE is a Constant variant wrapping the field's -1 element.
         assert!(matches!(
-            SymbolicExpression::<Bn254>::NEG_ONE,
-            SymbolicExpression::Constant(c) if c == Bn254::NEG_ONE
+            SymbolicExpression::<Fr>::NEG_ONE,
+            SymbolicExpression::Constant(c) if c == Fr::NEG_ONE
         ));
     }
 
     #[test]
     fn test_from_symbolic_variable() {
         // Create a main trace variable at column index 3.
-        let var = SymbolicVariable::<Bn254>::new(Entry::Main { offset: 0 }, 3);
+        let var = SymbolicVariable::<Fr>::new(Entry::Main { offset: 0 }, 3);
 
         // Convert to expression.
-        let expr: SymbolicExpression<Bn254> = var.into();
+        let expr: SymbolicExpression<Fr> = var.into();
 
         // Verify the variable is preserved with correct entry and index.
         match expr {
@@ -665,8 +657,8 @@ mod tests {
     #[test]
     fn test_from_field_element() {
         // Convert a field element directly to expression.
-        let field_val = Bn254::new(42);
-        let expr: SymbolicExpression<Bn254> = field_val.into();
+        let field_val = Fr::new(42);
+        let expr: SymbolicExpression<Fr> = field_val.into();
 
         // Verify it becomes a Constant with the same value.
         assert!(matches!(
@@ -678,54 +670,50 @@ mod tests {
     #[test]
     fn test_from_prime_subfield() {
         // Create expression from prime subfield element.
-        let prime_subfield_val = <Bn254 as PrimeCharacteristicRing>::PrimeSubfield::new(7);
-        let expr = SymbolicExpression::<Bn254>::from_prime_subfield(prime_subfield_val);
+        let prime_subfield_val = <Fr as PrimeCharacteristicRing>::PrimeSubfield::new(7);
+        let expr = SymbolicExpression::<Fr>::from_prime_subfield(prime_subfield_val);
 
         // Verify it produces a constant with the converted value.
         assert!(matches!(
             expr,
-            SymbolicExpression::Constant(c) if c == Bn254::new(7)
+            SymbolicExpression::Constant(c) if c == Fr::new(7)
         ));
     }
 
     #[test]
     fn test_assign_operators() {
         // Test AddAssign with constants (should simplify).
-        let mut expr = SymbolicExpression::Constant(Bn254::new(5));
-        expr += SymbolicExpression::Constant(Bn254::new(3));
+        let mut expr = SymbolicExpression::Constant(Fr::new(5));
+        expr += SymbolicExpression::Constant(Fr::new(3));
         assert!(matches!(
             expr,
-            SymbolicExpression::Constant(c) if c == Bn254::new(8)
+            SymbolicExpression::Constant(c) if c == Fr::new(8)
         ));
 
         // Test SubAssign with constants (should simplify).
-        let mut expr = SymbolicExpression::Constant(Bn254::new(10));
-        expr -= SymbolicExpression::Constant(Bn254::new(4));
+        let mut expr = SymbolicExpression::Constant(Fr::new(10));
+        expr -= SymbolicExpression::Constant(Fr::new(4));
         assert!(matches!(
             expr,
-            SymbolicExpression::Constant(c) if c == Bn254::new(6)
+            SymbolicExpression::Constant(c) if c == Fr::new(6)
         ));
 
         // Test MulAssign with constants (should simplify).
-        let mut expr = SymbolicExpression::Constant(Bn254::new(6));
-        expr *= SymbolicExpression::Constant(Bn254::new(7));
+        let mut expr = SymbolicExpression::Constant(Fr::new(6));
+        expr *= SymbolicExpression::Constant(Fr::new(7));
         assert!(matches!(
             expr,
-            SymbolicExpression::Constant(c) if c == Bn254::new(42)
+            SymbolicExpression::Constant(c) if c == Fr::new(42)
         ));
     }
 
     #[test]
     fn test_subtraction_creates_sub_node() {
         // Create two trace variables.
-        let a = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            0,
-        ));
-        let b = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            1,
-        ));
+        let a =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 0));
+        let b =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 1));
 
         // Subtract them.
         let result = a - b;
@@ -761,10 +749,8 @@ mod tests {
     #[test]
     fn test_negation_creates_neg_node() {
         // Create a trace variable.
-        let var = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            0,
-        ));
+        let var =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 0));
 
         // Negate it.
         let result = -var;
@@ -789,37 +775,35 @@ mod tests {
     #[test]
     fn test_empty_sum_returns_zero() {
         // Sum of empty iterator should be additive identity.
-        let empty: Vec<SymbolicExpression<Bn254>> = vec![];
-        let result: SymbolicExpression<Bn254> = empty.into_iter().sum();
+        let empty: Vec<SymbolicExpression<Fr>> = vec![];
+        let result: SymbolicExpression<Fr> = empty.into_iter().sum();
 
         assert!(matches!(
             result,
-            SymbolicExpression::Constant(c) if c == Bn254::ZERO
+            SymbolicExpression::Constant(c) if c == Fr::ZERO
         ));
     }
 
     #[test]
     fn test_empty_product_returns_one() {
         // Product of empty iterator should be multiplicative identity.
-        let empty: Vec<SymbolicExpression<Bn254>> = vec![];
-        let result: SymbolicExpression<Bn254> = empty.into_iter().product();
+        let empty: Vec<SymbolicExpression<Fr>> = vec![];
+        let result: SymbolicExpression<Fr> = empty.into_iter().product();
 
         assert!(matches!(
             result,
-            SymbolicExpression::Constant(c) if c == Bn254::ONE
+            SymbolicExpression::Constant(c) if c == Fr::ONE
         ));
     }
 
     #[test]
     fn test_mixed_degree_addition() {
         // Constant has degree 0.
-        let constant = SymbolicExpression::Constant(Bn254::new(5));
+        let constant = SymbolicExpression::Constant(Fr::new(5));
 
         // Variable has degree 1.
-        let var = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            0,
-        ));
+        let var =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 0));
 
         // Add them: max(0, 1) = 1.
         let result = constant + var;
@@ -836,7 +820,7 @@ mod tests {
                 // Verify left operand is the constant 5.
                 assert!(matches!(
                     x.as_ref(),
-                    SymbolicExpression::Constant(c) if *c == Bn254::new(5)
+                    SymbolicExpression::Constant(c) if *c == Fr::new(5)
                 ));
 
                 // Verify right operand is main trace variable at index 0, offset 0.
@@ -853,18 +837,12 @@ mod tests {
     #[test]
     fn test_chained_multiplication_degree() {
         // Create three variables, each with degree 1.
-        let a = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            0,
-        ));
-        let b = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            1,
-        ));
-        let c = SymbolicExpression::Variable::<Bn254>(SymbolicVariable::new(
-            Entry::Main { offset: 0 },
-            2,
-        ));
+        let a =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 0));
+        let b =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 1));
+        let c =
+            SymbolicExpression::Variable::<Fr>(SymbolicVariable::new(Entry::Main { offset: 0 }, 2));
 
         // a * b has degree 1 + 1 = 2.
         let ab = a * b;

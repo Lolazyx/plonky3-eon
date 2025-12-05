@@ -87,13 +87,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_field::PrimeCharacteristicRing;
 
     use super::*;
 
     const OUT_LEN: usize = 2;
-    type F = Bn254;
+    type F = Fr;
 
     #[derive(Clone)]
     struct TestHasher {}

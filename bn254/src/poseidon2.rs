@@ -1,4 +1,4 @@
-//! Diffusion matrix for Bn254
+//! Diffusion matrix for Fr
 //!
 //! Reference: https://github.com/HorizenLabs/poseidon2/blob/main/plain_implementations/src/poseidon2/poseidon2_instance_bn256.rs
 
@@ -13,7 +13,7 @@ use p3_poseidon2::{
     external_terminal_permute_state, internal_permute_state,
 };
 
-use crate::Bn254;
+use crate::Fr;
 
 /// Degree of the chosen permutation polynomial for BN254, used as the Poseidon2 S-Box.
 ///
@@ -24,7 +24,7 @@ const BN254_S_BOX_DEGREE: u64 = 5;
 ///
 /// It acts on arrays of the form `[Bn254Fr; WIDTH]`.
 pub type Poseidon2Bn254<const WIDTH: usize> = Poseidon2<
-    Bn254,
+    Fr,
     Poseidon2ExternalLayerBn254<WIDTH>,
     Poseidon2InternalLayerBn254,
     WIDTH,
@@ -36,11 +36,11 @@ const BN254_WIDTH: usize = 3;
 
 #[derive(Debug, Clone, Default)]
 pub struct Poseidon2InternalLayerBn254 {
-    internal_constants: Vec<Bn254>,
+    internal_constants: Vec<Fr>,
 }
 
-impl InternalLayerConstructor<Bn254> for Poseidon2InternalLayerBn254 {
-    fn new_from_constants(internal_constants: Vec<Bn254>) -> Self {
+impl InternalLayerConstructor<Fr> for Poseidon2InternalLayerBn254 {
+    fn new_from_constants(internal_constants: Vec<Fr>) -> Self {
         Self { internal_constants }
     }
 }
@@ -52,7 +52,7 @@ impl InternalLayerConstructor<Bn254> for Poseidon2InternalLayerBn254 {
 ///     1 + Diag([1, 1, 2]) =   [1, 2, 1]
 ///                             [1, 1, 3]
 /// ```
-fn bn254_matmul_internal(state: &mut [Bn254; 3]) {
+fn bn254_matmul_internal(state: &mut [Fr; 3]) {
     // We bracket in this way as the s-box is applied to state[0] so this lets us
     // begin this computation before the s-box finishes.
     let sum = state[0] + (state[1] + state[2]);
@@ -62,16 +62,16 @@ fn bn254_matmul_internal(state: &mut [Bn254; 3]) {
     state[2] = state[2].double() + sum;
 }
 
-impl InternalLayer<Bn254, BN254_WIDTH, BN254_S_BOX_DEGREE> for Poseidon2InternalLayerBn254 {
+impl InternalLayer<Fr, BN254_WIDTH, BN254_S_BOX_DEGREE> for Poseidon2InternalLayerBn254 {
     /// Perform the internal layers of the Poseidon2 permutation on the given state.
-    fn permute_state(&self, state: &mut [Bn254; BN254_WIDTH]) {
+    fn permute_state(&self, state: &mut [Fr; BN254_WIDTH]) {
         internal_permute_state(state, bn254_matmul_internal, &self.internal_constants);
     }
 }
 
-pub type Poseidon2ExternalLayerBn254<const WIDTH: usize> = ExternalLayerConstants<Bn254, WIDTH>;
+pub type Poseidon2ExternalLayerBn254<const WIDTH: usize> = ExternalLayerConstants<Fr, WIDTH>;
 
-impl<const WIDTH: usize> ExternalLayerConstructor<Bn254, WIDTH>
+impl<const WIDTH: usize> ExternalLayerConstructor<Fr, WIDTH>
     for Poseidon2ExternalLayerBn254<WIDTH>
 {
     fn new_from_constants(external_constants: Self) -> Self {
@@ -79,11 +79,11 @@ impl<const WIDTH: usize> ExternalLayerConstructor<Bn254, WIDTH>
     }
 }
 
-impl<const WIDTH: usize> ExternalLayer<Bn254, WIDTH, BN254_S_BOX_DEGREE>
+impl<const WIDTH: usize> ExternalLayer<Fr, WIDTH, BN254_S_BOX_DEGREE>
     for Poseidon2ExternalLayerBn254<WIDTH>
 {
     /// Perform the initial external layers of the Poseidon2 permutation on the given state.
-    fn permute_state_initial(&self, state: &mut [Bn254; WIDTH]) {
+    fn permute_state_initial(&self, state: &mut [Fr; WIDTH]) {
         external_initial_permute_state(
             state,
             self.get_initial_constants(),
@@ -93,7 +93,7 @@ impl<const WIDTH: usize> ExternalLayer<Bn254, WIDTH, BN254_S_BOX_DEGREE>
     }
 
     /// Perform the terminal external layers of the Poseidon2 permutation on the given state.
-    fn permute_state_terminal(&self, state: &mut [Bn254; WIDTH]) {
+    fn permute_state_terminal(&self, state: &mut [Fr; WIDTH]) {
         external_terminal_permute_state(
             state,
             self.get_terminal_constants(),
@@ -120,12 +120,12 @@ mod tests {
     use crate::BN254_MONTY_R_SQ;
     use crate::helpers::monty_mul;
 
-    fn bn254_from_ark_ff(input: ark_FpBN256) -> Bn254 {
+    fn bn254_from_ark_ff(input: ark_FpBN256) -> Fr {
         let mut full_bytes = [0; 32];
         let bytes = input.into_bigint().to_bytes_le();
         full_bytes[..bytes.len()].copy_from_slice(&bytes);
 
-        let value = Bn254::from_bytes_monty(&full_bytes);
+        let value = Fr::from_bytes_monty(&full_bytes);
 
         value.map_or_else(
             || panic!("Invalid field element"),
@@ -133,12 +133,12 @@ mod tests {
                 // From bytes does not convert into Monty form.
                 // Hence we need to do that ourselves.
                 let monty_form = monty_mul(BN254_MONTY_R_SQ, field_elem.value);
-                Bn254::new_monty(monty_form)
+                Fr::new_monty(monty_form)
             },
         )
     }
 
-    fn ark_ff_from_bn254(input: Bn254) -> ark_FpBN256 {
+    fn ark_ff_from_bn254(input: Fr) -> ark_FpBN256 {
         // We can't just use `input.into_bytes()` as we need to first convert out of MONTY form.
         // Going via `BigUint` is a little unnecessary but is sufficient for our purposes.
         let bigint = BigUint::from_bytes_le(&input.as_canonical_biguint().to_bytes_le());
@@ -151,7 +151,7 @@ mod tests {
         const ROUNDS_F: usize = 8;
         const ROUNDS_P: usize = 56;
 
-        type F = Bn254;
+        type F = Fr;
 
         let mut rng = SmallRng::seed_from_u64(1);
 

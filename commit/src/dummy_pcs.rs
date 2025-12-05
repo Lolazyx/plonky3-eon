@@ -170,21 +170,21 @@ where
 mod tests {
     use super::*;
     use alloc::vec;
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_challenger::CanSample;
     use p3_field::coset::TwoAdicMultiplicativeCoset;
-    use p3_field::{Field, PrimeCharacteristicRing, TwoAdicField};
+    use p3_field::{PrimeCharacteristicRing, TwoAdicField};
     use p3_matrix::dense::RowMajorMatrix;
     use p3_util::log2_strict_usize;
 
-    // Use Bn254 field for testing
-    type TestVal = Bn254;
+    // Use Fr field for testing
+    type TestVal = Fr;
 
     // Dummy challenger that satisfies trait bounds but does nothing
     struct DummyChallenger;
-    impl CanSample<Bn254> for DummyChallenger {
-        fn sample(&mut self) -> Bn254 {
-            Bn254::ZERO
+    impl CanSample<Fr> for DummyChallenger {
+        fn sample(&mut self) -> Fr {
+            Fr::ZERO
         }
     }
 
@@ -307,7 +307,7 @@ mod tests {
         let evals = RowMajorMatrix::new(values, 2);
 
         // Commit to the polynomial
-        // Use trait explicitly with Bn254 as Challenge
+        // Use trait explicitly with Fr as Challenge
         let (commitment, _prover_data) = <DummyPcs<_> as Pcs<TestVal, DummyChallenger>>::commit(
             &pcs,
             vec![(domain, evals.clone())],

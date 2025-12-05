@@ -156,7 +156,7 @@ mod tests {
     use alloc::vec;
 
     use p3_air::{BaseAir, BaseAirWithPublicValues};
-    use p3_bn254::Bn254;
+    use p3_bn254::Fr;
     use p3_field::PrimeCharacteristicRing;
 
     use super::*;
@@ -205,17 +205,17 @@ mod tests {
         // Last row must match public values [4, 4]
         let air = RowLogicAir::<2>;
         let values = vec![
-            Bn254::ONE,
-            Bn254::ONE, // Row 0
-            Bn254::new(2),
-            Bn254::new(2), // Row 1
-            Bn254::new(3),
-            Bn254::new(3), // Row 2
-            Bn254::new(4),
-            Bn254::new(4), // Row 3 (last)
+            Fr::ONE,
+            Fr::ONE, // Row 0
+            Fr::new(2),
+            Fr::new(2), // Row 1
+            Fr::new(3),
+            Fr::new(3), // Row 2
+            Fr::new(4),
+            Fr::new(4), // Row 3 (last)
         ];
         let main = RowMajorMatrix::new(values, 2);
-        check_constraints(&air, &main, &[Bn254::new(4); 2]);
+        check_constraints(&air, &main, &[Fr::new(4); 2]);
     }
 
     #[test]
@@ -224,17 +224,17 @@ mod tests {
         // Row 2 does not equal row 1 + 1 → should fail on transition from row 1 to 2.
         let air = RowLogicAir::<2>;
         let values = vec![
-            Bn254::ONE,
-            Bn254::ONE, // Row 0
-            Bn254::new(2),
-            Bn254::new(2), // Row 1
-            Bn254::new(5),
-            Bn254::new(5), // Row 2 (wrong)
-            Bn254::new(6),
-            Bn254::new(6), // Row 3
+            Fr::ONE,
+            Fr::ONE, // Row 0
+            Fr::new(2),
+            Fr::new(2), // Row 1
+            Fr::new(5),
+            Fr::new(5), // Row 2 (wrong)
+            Fr::new(6),
+            Fr::new(6), // Row 3
         ];
         let main = RowMajorMatrix::new(values, 2);
-        check_constraints(&air, &main, &[Bn254::new(6); 2]);
+        check_constraints(&air, &main, &[Fr::new(6); 2]);
     }
 
     #[test]
@@ -243,18 +243,18 @@ mod tests {
         // The transition logic is fine, but public value check fails at the last row.
         let air = RowLogicAir::<2>;
         let values = vec![
-            Bn254::ONE,
-            Bn254::ONE, // Row 0
-            Bn254::new(2),
-            Bn254::new(2), // Row 1
-            Bn254::new(3),
-            Bn254::new(3), // Row 2
-            Bn254::new(4),
-            Bn254::new(4), // Row 3
+            Fr::ONE,
+            Fr::ONE, // Row 0
+            Fr::new(2),
+            Fr::new(2), // Row 1
+            Fr::new(3),
+            Fr::new(3), // Row 2
+            Fr::new(4),
+            Fr::new(4), // Row 3
         ];
         let main = RowMajorMatrix::new(values, 2);
         // Wrong public value on column 1
-        check_constraints(&air, &main, &[Bn254::new(4), Bn254::new(5)]);
+        check_constraints(&air, &main, &[Fr::new(4), Fr::new(5)]);
     }
 
     #[test]
@@ -264,10 +264,10 @@ mod tests {
         // Here: is_transition == false ⇒ so no assertions are enforced.
         let air = RowLogicAir::<2>;
         let values = vec![
-            Bn254::new(99),
-            Bn254::new(77), // Row 0
+            Fr::new(99),
+            Fr::new(77), // Row 0
         ];
         let main = RowMajorMatrix::new(values, 2);
-        check_constraints(&air, &main, &[Bn254::new(99), Bn254::new(77)]);
+        check_constraints(&air, &main, &[Fr::new(99), Fr::new(77)]);
     }
 }
