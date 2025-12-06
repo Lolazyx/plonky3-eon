@@ -105,7 +105,10 @@ extern crate alloc;
 pub mod mmcs;
 pub mod params;
 pub mod pcs;
-mod util;
+
+// Re-export util for benchmarking purposes
+#[doc(hidden)]
+pub mod util;
 
 pub use mmcs::{KzgMmcs, KzgMmcsCommitment, KzgMmcsProof};
 pub use params::{init_srs_unsafe, KzgError, KzgParams, StructuredReferenceString};

@@ -146,7 +146,8 @@ pub(crate) fn quotient_and_eval(coeffs: &[Fr], point: Fr) -> (Vec<Fr>, Fr) {
 /// For verifying multiple openings, consider using [`verify_batch`] which is more
 /// efficient as it performs only a single multi-pairing instead of multiple individual
 /// pairing checks.
-pub(crate) fn verify_single(
+#[doc(hidden)]
+pub fn verify_single(
     commitment: &G1,
     witness: &G1,
     value: Fr,
@@ -170,8 +171,9 @@ pub(crate) fn verify_single(
 ///
 /// Contains all the necessary data to verify a single KZG opening:
 /// the polynomial commitment, opening witness, claimed value, and evaluation point.
+#[doc(hidden)]
 #[derive(Clone, Debug)]
-pub(crate) struct OpeningInfo {
+pub struct OpeningInfo {
     /// The commitment to the polynomial
     pub commitment: G1,
     /// The opening witness (quotient polynomial commitment)
@@ -239,7 +241,8 @@ pub(crate) struct OpeningInfo {
 ///
 /// verify_batch(&openings, &params)?;
 /// ```
-pub(crate) fn verify_batch(openings: &[OpeningInfo], params: &KzgParams) -> Result<(), KzgError> {
+#[doc(hidden)]
+pub fn verify_batch(openings: &[OpeningInfo], params: &KzgParams) -> Result<(), KzgError> {
     if openings.is_empty() {
         return Ok(());
     }
