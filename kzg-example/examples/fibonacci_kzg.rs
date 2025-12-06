@@ -14,6 +14,7 @@ use p3_kzg_example::{FibonacciAir, prove_fibonacci};
 use p3_matrix::Matrix;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
+use std::time::Instant;
 use tracing_forest::ForestLayer;
 use tracing_forest::util::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -55,7 +56,16 @@ fn main() {
     let air = FibonacciAir::new(num_steps);
 
     // Generate the trace to show some values
+    println!("\nGenerating trace...");
+    let start = Instant::now();
     let trace = air.generate_trace::<Bn254Fr>();
+    let trace_gen_time = start.elapsed();
+
+    println!("\nTrace dimensions:");
+    println!("  Rows (height): {}", trace.height());
+    println!("  Columns (width): {}", trace.width());
+    println!("  Trace generation time: {:?}", trace_gen_time);
+
     println!("\nFirst 10 Fibonacci numbers in the trace:");
     for i in 0..10.min(num_steps) {
         let f_n = trace.get(i, 0).unwrap();
