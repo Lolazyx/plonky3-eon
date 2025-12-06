@@ -1,7 +1,7 @@
 [package]
 name = "p3-kzg"
 version = "0.3.0"
-edition = "2024"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "KZG commitment scheme for Plonky3 using BN254"
 

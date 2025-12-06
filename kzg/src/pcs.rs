@@ -3,15 +3,15 @@ use alloc::vec::Vec;
 use p3_bn254::{Fr, G1};
 use p3_commit::{OpenedValues, Pcs};
 use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
-use p3_field::PrimeCharacteristicRing;
 use p3_field::coset::TwoAdicMultiplicativeCoset;
-use p3_matrix::Matrix;
+use p3_field::PrimeCharacteristicRing;
 use p3_matrix::dense::RowMajorMatrix;
+use p3_matrix::Matrix;
 use p3_util::log2_strict_usize;
 use serde::{Deserialize, Serialize};
 
 use crate::params::{KzgError, KzgParams, StructuredReferenceString};
-use crate::util::{commit_column, eval_poly, quotient_and_eval, verify_single};
+use crate::util::{commit_column, eval_poly, quotient_and_eval, verify_batch, OpeningInfo};
 
 /// KZG commitment for a single matrix.
 ///
@@ -347,6 +347,9 @@ impl<Challenger> Pcs<Fr, Challenger> for KzgPcs {
             return Err(KzgError::ProofShapeMismatch);
         }
 
+        // Collect all openings to verify in a single batch
+        let mut all_openings = Vec::new();
+
         for ((commitment, matrices), matrix_proofs) in commitments_with_opening_points
             .into_iter()
             .zip(&proof.rounds)
@@ -382,13 +385,19 @@ impl<Challenger> Pcs<Fr, Challenger> for KzgPcs {
                         .zip(&point_proof.witnesses)
                         .zip(&matrix_commitment.columns)
                     {
-                        verify_single(column_commitment, witness, value, base_point, &self.params)?;
+                        all_openings.push(OpeningInfo {
+                            commitment: *column_commitment,
+                            witness: *witness,
+                            value,
+                            point: base_point,
+                        });
                     }
                 }
             }
         }
 
-        Ok(())
+        // Verify all openings in a single batch
+        verify_batch(&all_openings, &self.params)
     }
 }
 
@@ -402,6 +411,9 @@ impl<P, const WIDTH: usize, const RATE: usize> CanObserve<KzgCommitment>
 where
     P: CryptographicPermutation<[Fr; WIDTH]>,
 {
+    // TODO: the current implementation use very simply byte decomposition
+    // Maybe with poseidon and cyclic curves we can observe field element
+    // directly.
     fn observe(&mut self, commitment: KzgCommitment) {
         // Observe each matrix commitment
         for matrix in commitment.matrices {

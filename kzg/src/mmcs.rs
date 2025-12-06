@@ -6,7 +6,7 @@ use p3_matrix::{Dimensions, Matrix};
 use serde::{Deserialize, Serialize};
 
 use crate::params::{KzgError, KzgParams, StructuredReferenceString};
-use crate::util::{commit_column, quotient_and_eval, verify_single};
+use crate::util::{commit_column, quotient_and_eval, verify_batch, OpeningInfo};
 
 /// KZG-based Merkle-tree-like commitment scheme (MMCS).
 ///
@@ -254,6 +254,9 @@ impl Mmcs<Fr> for KzgMmcs {
         let max_height = dimensions.iter().map(|d| d.height).max().unwrap_or(0);
         let log2_max_height = max_height.next_power_of_two().trailing_zeros() as usize;
 
+        // Collect all openings to verify in a single batch
+        let mut all_openings = Vec::new();
+
         for (((values, commitment), dims), witnesses) in opened_values
             .iter()
             .zip(&commit.matrices)
@@ -277,10 +280,16 @@ impl Mmcs<Fr> for KzgMmcs {
             for ((value, commitment), witness) in
                 values.iter().zip(&commitment.columns).zip(witnesses)
             {
-                verify_single(commitment, witness, *value, point, &self.params)?;
+                all_openings.push(OpeningInfo {
+                    commitment: *commitment,
+                    witness: *witness,
+                    value: *value,
+                    point,
+                });
             }
         }
 
-        Ok(())
+        // Verify all openings in a single batch
+        verify_batch(&all_openings, &self.params)
     }
 }

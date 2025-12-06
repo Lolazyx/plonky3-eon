@@ -108,7 +108,7 @@ pub mod pcs;
 mod util;
 
 pub use mmcs::{KzgMmcs, KzgMmcsCommitment, KzgMmcsProof};
-pub use params::{KzgError, KzgParams, StructuredReferenceString, init_srs_unsafe};
+pub use params::{init_srs_unsafe, KzgError, KzgParams, StructuredReferenceString};
 pub use pcs::{
     KzgCommitment, KzgPcs, KzgProof, MatrixCommitment, MatrixProof, PointProof,
     ProverData as PcsProverData,

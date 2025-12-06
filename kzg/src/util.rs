@@ -6,7 +6,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use p3_bn254::{Fr, G1, G2, pairing};
+use p3_bn254::{multi_pairing, pairing, Fr, G1, G2};
 use p3_field::PrimeCharacteristicRing;
 
 use crate::params::{KzgError, KzgParams};
@@ -140,6 +140,12 @@ pub(crate) fn quotient_and_eval(coeffs: &[Fr], point: Fr) -> (Vec<Fr>, Fr) {
 /// Under the KZG security assumption (a variant of the q-SDH assumption), it is
 /// computationally infeasible to produce a valid-looking proof for an incorrect
 /// evaluation without knowing the secret α.
+///
+/// # Note
+///
+/// For verifying multiple openings, consider using [`verify_batch`] which is more
+/// efficient as it performs only a single multi-pairing instead of multiple individual
+/// pairing checks.
 pub(crate) fn verify_single(
     commitment: &G1,
     witness: &G1,
@@ -154,6 +160,128 @@ pub(crate) fn verify_single(
     let right = pairing(*witness, params.g2_alpha - g2.mul_scalar(point));
 
     if left == right {
+        Ok(())
+    } else {
+        Err(KzgError::ProofShapeMismatch)
+    }
+}
+
+/// Batch opening information for a single proof.
+///
+/// Contains all the necessary data to verify a single KZG opening:
+/// the polynomial commitment, opening witness, claimed value, and evaluation point.
+#[derive(Clone, Debug)]
+pub(crate) struct OpeningInfo {
+    /// The commitment to the polynomial
+    pub commitment: G1,
+    /// The opening witness (quotient polynomial commitment)
+    pub witness: G1,
+    /// The claimed evaluation value
+    pub value: Fr,
+    /// The evaluation point
+    pub point: Fr,
+}
+
+/// Verifies multiple KZG opening proofs using a single batch pairing check.
+///
+/// This is significantly more efficient than verifying each proof individually,
+/// as it requires only one multi-pairing computation instead of 2n individual
+/// pairings for n openings.
+///
+/// # How It Works
+///
+/// Instead of checking each equation individually:
+/// - `e(C₁ - v₁·g₁, g₂) = e(W₁, α·g₂ - z₁·g₂)`
+/// - `e(C₂ - v₂·g₁, g₂) = e(W₂, α·g₂ - z₂·g₂)`
+/// - ...
+///
+/// We rearrange and combine into a single check:
+/// `e(C₁ - v₁·g₁, g₂) · e(-W₁, α·g₂ - z₁·g₂) · e(C₂ - v₂·g₁, g₂) · e(-W₂, α·g₂ - z₂·g₂) ... = 1`
+///
+/// This is equivalent but requires only one multi-pairing instead of 2n pairings.
+///
+/// # Arguments
+///
+/// * `openings` - Slice of opening information to verify
+/// * `params` - The KZG parameters containing α·g₂
+///
+/// # Returns
+///
+/// * `Ok(())` - If all openings verify successfully
+/// * `Err(KzgError::ProofShapeMismatch)` - If any opening fails verification
+///
+/// # Performance
+///
+/// For n openings:
+/// - Individual verification: 2n pairings
+/// - Batch verification: 1 multi-pairing (with 2n pairs)
+///
+/// Multi-pairing is typically 1.5-2x faster than computing individual pairings,
+/// resulting in significant speedup for large batches.
+///
+/// # Example
+///
+/// ```ignore
+/// let openings = vec![
+///     OpeningInfo {
+///         commitment: commitment1,
+///         witness: witness1,
+///         value: value1,
+///         point: point1,
+///     },
+///     OpeningInfo {
+///         commitment: commitment2,
+///         witness: witness2,
+///         value: value2,
+///         point: point2,
+///     },
+/// ];
+///
+/// verify_batch(&openings, &params)?;
+/// ```
+pub(crate) fn verify_batch(openings: &[OpeningInfo], params: &KzgParams) -> Result<(), KzgError> {
+    if openings.is_empty() {
+        return Ok(());
+    }
+
+    // Special case: single opening can use the simpler verify_single
+    if openings.len() == 1 {
+        let opening = &openings[0];
+        return verify_single(
+            &opening.commitment,
+            &opening.witness,
+            opening.value,
+            opening.point,
+            params,
+        );
+    }
+
+    let g1 = G1::generator();
+    let g2 = G2::generator();
+
+    // Build the multi-pairing inputs
+    // We want to check: for all i, e(C_i - v_i·g₁, g₂) = e(W_i, α·g₂ - z_i·g₂)
+    // Rearranging: e(C_i - v_i·g₁, g₂) · e(W_i, -(α·g₂ - z_i·g₂)) = 1
+    // Which means: e(C_i - v_i·g₁, g₂) · e(-W_i, α·g₂ - z_i·g₂) = 1
+    //
+    // We combine all these: Π_i [e(C_i - v_i·g₁, g₂) · e(-W_i, α·g₂ - z_i·g₂)] = 1
+    let mut pairs = Vec::with_capacity(2 * openings.len());
+
+    for opening in openings {
+        // First pair: (C_i - v_i·g₁, g₂)
+        let commitment_adjusted = opening.commitment - g1.mul_scalar(opening.value);
+        pairs.push((commitment_adjusted, g2));
+
+        // Second pair: (-W_i, α·g₂ - z_i·g₂)
+        let g2_adjusted = params.g2_alpha - g2.mul_scalar(opening.point);
+        pairs.push((-opening.witness, g2_adjusted));
+    }
+
+    // Compute the multi-pairing
+    let result = multi_pairing(&pairs);
+
+    // Check if the result equals the identity in Gt
+    if result == p3_bn254::Gt::identity() {
         Ok(())
     } else {
         Err(KzgError::ProofShapeMismatch)

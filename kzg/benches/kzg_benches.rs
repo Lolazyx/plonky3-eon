@@ -1,9 +1,9 @@
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use p3_bn254::{Fr, Poseidon2Bn254};
 use p3_challenger::DuplexChallenger;
 use p3_commit::Pcs;
-use p3_field::PrimeCharacteristicRing;
 use p3_field::coset::TwoAdicMultiplicativeCoset;
+use p3_field::PrimeCharacteristicRing;
 use p3_kzg::KzgPcs;
 use p3_matrix::dense::RowMajorMatrix;
 use rand::rngs::SmallRng;
