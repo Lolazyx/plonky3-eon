@@ -5,7 +5,7 @@ use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
 use p3_matrix::{Dimensions, Matrix};
 use serde::{Deserialize, Serialize};
 
-use crate::params::{KzgError, KzgParams};
+use crate::params::{KzgError, KzgParams, StructuredReferenceString};
 use crate::util::{commit_column, quotient_and_eval, verify_single};
 
 /// KZG-based Merkle-tree-like commitment scheme (MMCS).
@@ -104,10 +104,32 @@ pub struct MatrixCommitment {
 }
 
 impl KzgMmcs {
-    /// Creates a new KZG MMCS instance with the given parameters.
+    /// Creates a new KZG MMCS instance from a Structured Reference String.
     ///
-    /// **Warning**: This method generates a trusted setup for testing purposes only.
-    /// In production, use parameters from a proper trusted setup ceremony.
+    /// # Arguments
+    ///
+    /// * `srs` - The Structured Reference String (trusted setup parameters)
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use p3_bn254::Fr;
+    /// use p3_kzg::{KzgMmcs, init_srs_unsafe};
+    /// use p3_field::PrimeCharacteristicRing;
+    ///
+    /// // For testing only - use a trusted setup in production
+    /// let srs = init_srs_unsafe(1024, Fr::from_u64(999));
+    /// let mmcs = KzgMmcs::from_srs(srs);
+    /// ```
+    #[must_use]
+    pub fn from_srs(srs: StructuredReferenceString) -> Self {
+        Self { params: srs }
+    }
+
+    /// Creates a new KZG MMCS instance by generating an unsafe SRS for testing.
+    ///
+    /// **WARNING**: This method is for testing purposes only! In production, use
+    /// `from_srs()` with parameters from a proper trusted setup ceremony.
     ///
     /// # Arguments
     ///
@@ -121,13 +143,13 @@ impl KzgMmcs {
     /// use p3_kzg::KzgMmcs;
     /// use p3_field::PrimeCharacteristicRing;
     ///
+    /// // For testing only
     /// let mmcs = KzgMmcs::new(1024, Fr::from_u64(999));
     /// ```
     #[must_use]
     pub fn new(max_degree: usize, alpha: Fr) -> Self {
-        Self {
-            params: KzgParams::new(max_degree, alpha),
-        }
+        use crate::init_srs_unsafe;
+        Self::from_srs(init_srs_unsafe(max_degree, alpha))
     }
 
     fn commit_matrix<M: Matrix<Fr>>(&self, matrix: &M) -> MatrixCommitment {

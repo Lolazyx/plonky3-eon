@@ -10,7 +10,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
 use serde::{Deserialize, Serialize};
 
-use crate::params::{KzgError, KzgParams};
+use crate::params::{KzgError, KzgParams, StructuredReferenceString};
 use crate::util::{commit_column, eval_poly, quotient_and_eval, verify_single};
 
 /// KZG commitment for a single matrix.
@@ -149,10 +149,35 @@ pub struct KzgPcs {
 }
 
 impl KzgPcs {
-    /// Creates a new KZG PCS instance with the given parameters.
+    /// Creates a new KZG PCS instance from a Structured Reference String.
     ///
-    /// **Warning**: This method generates a trusted setup for testing purposes only.
-    /// In production, use parameters from a proper trusted setup ceremony.
+    /// # Arguments
+    ///
+    /// * `srs` - The Structured Reference String (trusted setup parameters)
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use p3_bn254::Fr;
+    /// use p3_kzg::{KzgPcs, init_srs_unsafe};
+    /// use p3_field::PrimeCharacteristicRing;
+    ///
+    /// // For testing only - use a trusted setup in production
+    /// let srs = init_srs_unsafe(1024, Fr::from_u64(999));
+    /// let pcs = KzgPcs::from_srs(srs);
+    /// ```
+    #[must_use]
+    pub fn from_srs(srs: StructuredReferenceString) -> Self {
+        Self {
+            params: srs,
+            dft: Radix2Dit::default(),
+        }
+    }
+
+    /// Creates a new KZG PCS instance by generating an unsafe SRS for testing.
+    ///
+    /// **WARNING**: This method is for testing purposes only! In production, use
+    /// `from_srs()` with parameters from a proper trusted setup ceremony.
     ///
     /// # Arguments
     ///
@@ -166,14 +191,13 @@ impl KzgPcs {
     /// use p3_kzg::KzgPcs;
     /// use p3_field::PrimeCharacteristicRing;
     ///
+    /// // For testing only
     /// let pcs = KzgPcs::new(1024, Fr::from_u64(999));
     /// ```
     #[must_use]
     pub fn new(max_degree: usize, alpha: Fr) -> Self {
-        Self {
-            params: KzgParams::new(max_degree, alpha),
-            dft: Radix2Dit::default(),
-        }
+        use crate::init_srs_unsafe;
+        Self::from_srs(init_srs_unsafe(max_degree, alpha))
     }
 
     fn commit_column(&self, coeffs: &[Fr]) -> Result<G1, KzgError> {
@@ -365,5 +389,38 @@ impl<Challenger> Pcs<Fr, Challenger> for KzgPcs {
         }
 
         Ok(())
+    }
+}
+
+// Implement CanObserve for KzgCommitment to work with DuplexChallenger
+// We observe G1 points by hashing their serialized representation into field elements
+use p3_challenger::{CanObserve, DuplexChallenger};
+use p3_symmetric::CryptographicPermutation;
+
+impl<P, const WIDTH: usize, const RATE: usize> CanObserve<KzgCommitment>
+    for DuplexChallenger<Fr, P, WIDTH, RATE>
+where
+    P: CryptographicPermutation<[Fr; WIDTH]>,
+{
+    fn observe(&mut self, commitment: KzgCommitment) {
+        // Observe each matrix commitment
+        for matrix in commitment.matrices {
+            // Observe each column commitment (G1 point)
+            for point in matrix.columns {
+                // Convert G1 point to bytes
+                let bytes = point.to_bytes();
+
+                // Convert bytes to field elements (32 bytes per G1 point compressed)
+                // Split into chunks and interpret as field elements
+                for chunk in bytes.chunks(8) {
+                    // Convert each 8-byte chunk to a u64 and then to Fr
+                    let mut value = 0u64;
+                    for (i, &byte) in chunk.iter().enumerate() {
+                        value |= (byte as u64) << (i * 8);
+                    }
+                    self.observe(Fr::from_u64(value));
+                }
+            }
+        }
     }
 }

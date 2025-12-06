@@ -133,6 +133,11 @@ impl G1 {
         bool::from(self.0.is_identity())
     }
 
+    /// Serialize this point to bytes (compressed form)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.to_affine().to_bytes().as_ref().to_vec()
+    }
+
     /// Scalar multiplication
     pub fn mul_scalar(&self, scalar: Fr) -> Self {
         // Convert our Fr to halo2's Fr using unsafe transmute

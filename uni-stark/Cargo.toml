@@ -37,6 +37,7 @@ p3-keccak.workspace = true
 # p3-mersenne-31.workspace = true
 p3-symmetric.workspace = true
 p3-bn254.workspace = true
+p3-kzg.workspace = true
 
 postcard = { workspace = true, features = ["alloc"] }
 rand.workspace = true

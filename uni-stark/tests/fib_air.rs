@@ -3,8 +3,8 @@ use core::borrow::Borrow;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_bn254::{Fr, Poseidon2Bn254};
 use p3_challenger::DuplexChallenger;
-use p3_commit::DummyPcs;
-use p3_field::{PrimeCharacteristicRing, coset::TwoAdicMultiplicativeCoset};
+use p3_field::PrimeCharacteristicRing;
+use p3_kzg::KzgPcs;
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_uni_stark::{StarkConfig, prove, verify};
@@ -106,8 +106,7 @@ type Val = Fr;
 type Perm = Poseidon2Bn254<3>;
 type Challenge = Val; // BN254 itself, no extension needed (degree 1)
 type Challenger = DuplexChallenger<Val, Perm, 3, 2>;
-type Domain = TwoAdicMultiplicativeCoset<Val>;
-type Pcs = DummyPcs<Domain>;
+type Pcs = KzgPcs;
 type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
 
 /// n-th Fibonacci number expected to be x
@@ -115,7 +114,7 @@ fn test_public_value_impl(n: usize, x: u64, _log_final_poly_len: usize) {
     let mut rng = SmallRng::seed_from_u64(1);
     let perm = Perm::new_from_rng(4, 22, &mut rng);
     let trace = generate_trace_rows::<Val>(0, 1, n);
-    let pcs = Pcs::default();
+    let pcs = Pcs::new(1024, Fr::from_u64(12345)); // KZG with max degree 1024
     let challenger = Challenger::new(perm);
 
     let config = MyConfig::new(pcs, challenger);
@@ -143,7 +142,7 @@ fn test_incorrect_public_value() {
     let mut rng = SmallRng::seed_from_u64(1);
     let perm = Perm::new_from_rng(4, 22, &mut rng);
     let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
-    let pcs = Pcs::default();
+    let pcs = Pcs::new(1024, Fr::from_u64(12345)); // KZG with max degree 1024
     let challenger = Challenger::new(perm);
     let config = MyConfig::new(pcs, challenger);
     let pis = vec![

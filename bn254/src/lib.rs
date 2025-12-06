@@ -72,11 +72,11 @@
 
 extern crate alloc;
 
-mod field;
 mod curve;
+mod field;
 mod helpers;
 mod poseidon2;
 
-pub use field::*;
 pub use curve::{G1, G2, Gt, fr_from_halo2, multi_pairing, pairing};
+pub use field::*;
 pub use poseidon2::Poseidon2Bn254;

@@ -34,27 +34,27 @@ use thiserror::Error;
 ///
 /// # Production vs Testing
 ///
-/// - **Testing**: Use `KzgParams::new(max_degree, alpha)` to generate an SRS from any field element
+/// - **Testing**: Use `init_srs_unsafe(max_degree, alpha)` to generate an SRS from any field element
 /// - **Production**: Load an SRS from a trusted setup ceremony (e.g., Ethereum's KZG ceremony)
 ///
 /// # Example
 ///
 /// ```rust
 /// use p3_bn254::Fr;
-/// use p3_kzg::KzgParams;
+/// use p3_kzg::init_srs_unsafe;
 /// use p3_field::PrimeCharacteristicRing;
 ///
 /// // For testing only - in production, use a trusted ceremony
 /// let max_degree = 1024;
 /// let secret_alpha = Fr::from_u64(999); // This must be discarded!
-/// let params = KzgParams::new(max_degree, secret_alpha);
+/// let srs = init_srs_unsafe(max_degree, secret_alpha);
 ///
-/// // The params can now commit to polynomials up to degree 1024
-/// assert_eq!(params.max_degree, 1024);
-/// assert_eq!(params.g1_powers.len(), 1025); // Degree 0 to 1024
+/// // The SRS can now commit to polynomials up to degree 1024
+/// assert_eq!(srs.max_degree, 1024);
+/// assert_eq!(srs.g1_powers.len(), 1025); // Degree 0 to 1024
 /// ```
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct KzgParams {
+pub struct StructuredReferenceString {
     /// Powers of the secret α in G1: [g₁, g₁^α, g₁^α², ..., g₁^α^max_degree]
     ///
     /// These are used to commit to polynomials by computing:
@@ -76,65 +76,69 @@ pub struct KzgParams {
     pub max_degree: usize,
 }
 
-impl KzgParams {
-    /// Creates a new structured reference string (SRS) for testing purposes.
-    ///
-    /// **WARNING**: This method is for testing only! In production, use an SRS from a
-    /// trusted setup ceremony where the secret α is generated securely and destroyed.
-    ///
-    /// # Arguments
-    ///
-    /// * `max_degree` - Maximum degree of polynomials that can be committed (inclusive)
-    /// * `alpha` - The "toxic waste" secret value used to generate the SRS
-    ///
-    /// # Returns
-    ///
-    /// A `KzgParams` containing:
-    /// - `g1_powers`: [g₁, g₁^α, g₁^α², ..., g₁^α^max_degree] (max_degree + 1 elements)
-    /// - `g2_alpha`: g₂^α
-    /// - `max_degree`: The maximum degree parameter
-    ///
-    /// # Security
-    ///
-    /// The `alpha` parameter is called "toxic waste" because knowledge of this value
-    /// allows creating fraudulent proofs. In a real system:
-    ///
-    /// 1. α should be generated via a multi-party computation (MPC) ceremony
-    /// 2. All participants' secret shares should be destroyed immediately after setup
-    /// 3. The final SRS should be verified for correctness
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use p3_bn254::Fr;
-    /// use p3_kzg::KzgParams;
-    /// use p3_field::PrimeCharacteristicRing;
-    ///
-    /// // Generate test parameters (DO NOT use in production)
-    /// let params = KzgParams::new(16, Fr::from_u64(12345));
-    ///
-    /// // Can commit to polynomials of degree 0 to 16
-    /// assert_eq!(params.max_degree, 16);
-    /// ```
-    #[must_use]
-    pub fn new(max_degree: usize, alpha: Fr) -> Self {
-        let g1 = G1::generator();
-        let g2 = G2::generator();
+/// Type alias for backward compatibility
+pub type KzgParams = StructuredReferenceString;
 
-        let mut g1_powers = Vec::with_capacity(max_degree + 1);
-        let mut power = Fr::ONE;
-        for _ in 0..=max_degree {
-            g1_powers.push(g1.mul_scalar(power));
-            power *= alpha;
-        }
+/// Initialize a Structured Reference String (SRS) for testing purposes.
+///
+/// **WARNING**: This function is UNSAFE for production use! It generates an SRS from a
+/// known secret value α, which compromises security. In production, use an SRS from a
+/// trusted setup ceremony where α is generated via multi-party computation and destroyed.
+///
+/// # Arguments
+///
+/// * `max_degree` - Maximum degree of polynomials that can be committed (inclusive)
+/// * `alpha` - The "toxic waste" secret value used to generate the SRS
+///
+/// # Returns
+///
+/// A `StructuredReferenceString` containing:
+/// - `g1_powers`: [g₁, g₁^α, g₁^α², ..., g₁^α^max_degree] (max_degree + 1 elements)
+/// - `g2_alpha`: g₂^α
+/// - `max_degree`: The maximum degree parameter
+///
+/// # Security
+///
+/// The `alpha` parameter is called "toxic waste" because knowledge of this value
+/// allows creating fraudulent proofs. In a real system:
+///
+/// 1. α should be generated via a multi-party computation (MPC) ceremony
+/// 2. All participants' secret shares should be destroyed immediately after setup
+/// 3. The final SRS should be verified for correctness
+///
+/// # Example
+///
+/// ```rust
+/// use p3_bn254::Fr;
+/// use p3_kzg::init_srs_unsafe;
+/// use p3_field::PrimeCharacteristicRing;
+///
+/// // Generate test parameters (DO NOT use in production)
+/// let srs = init_srs_unsafe(16, Fr::from_u64(12345));
+///
+/// // Can commit to polynomials of degree 0 to 16
+/// assert_eq!(srs.max_degree, 16);
+/// ```
+#[must_use]
+pub fn init_srs_unsafe(max_degree: usize, alpha: Fr) -> StructuredReferenceString {
+    let g1 = G1::generator();
+    let g2 = G2::generator();
 
-        Self {
-            g1_powers,
-            g2_alpha: g2.mul_scalar(alpha),
-            max_degree,
-        }
+    let mut g1_powers = Vec::with_capacity(max_degree + 1);
+    let mut power = Fr::ONE;
+    for _ in 0..=max_degree {
+        g1_powers.push(g1.mul_scalar(power));
+        power *= alpha;
     }
 
+    StructuredReferenceString {
+        g1_powers,
+        g2_alpha: g2.mul_scalar(alpha),
+        max_degree,
+    }
+}
+
+impl StructuredReferenceString {
     /// Checks whether a polynomial of the given degree can be committed with this SRS.
     ///
     /// # Arguments
@@ -150,12 +154,12 @@ impl KzgParams {
     ///
     /// ```rust
     /// use p3_bn254::Fr;
-    /// use p3_kzg::KzgParams;
+    /// use p3_kzg::init_srs_unsafe;
     ///
-    /// let params = KzgParams::new(100, Fr::new(999));
-    /// assert!(params.ensure_supported(50).is_ok());
-    /// assert!(params.ensure_supported(100).is_ok());
-    /// assert!(params.ensure_supported(101).is_err());
+    /// let srs = init_srs_unsafe(100, Fr::new(999));
+    /// assert!(srs.ensure_supported(50).is_ok());
+    /// assert!(srs.ensure_supported(100).is_ok());
+    /// assert!(srs.ensure_supported(101).is_err());
     /// ```
     pub fn ensure_supported(&self, degree: usize) -> Result<(), KzgError> {
         if degree > self.max_degree {

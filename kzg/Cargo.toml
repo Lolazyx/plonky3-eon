@@ -13,10 +13,19 @@ p3-dft = { workspace = true }
 p3-field = { workspace = true }
 p3-matrix = { workspace = true }
 p3-poseidon2 = { workspace = true }
+p3-symmetric = { workspace = true }
 p3-util = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 rand = { workspace = true, features = ["std", "small_rng"] }
+halo2curves = "0.9"
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "kzg_benches"
+harness = false
 
 [lib]
 name = "p3_kzg"
