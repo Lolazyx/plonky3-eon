@@ -1,0 +1,30 @@
+[package]
+name = "p3-kzg-example"
+description = "Example KZG-based STARK proof for Fibonacci sequence using BN254 field."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+p3-air.workspace = true
+p3-bn254.workspace = true
+p3-challenger.workspace = true
+p3-commit.workspace = true
+p3-field.workspace = true
+p3-kzg.workspace = true
+p3-matrix.workspace = true
+p3-symmetric.workspace = true
+p3-uni-stark.workspace = true
+
+rand.workspace = true
+
+[dev-dependencies]
+tracing-forest = { workspace = true, features = ["ansi", "smallvec"] }
+tracing-subscriber = { workspace = true, features = ["std", "env-filter"] }
+
+[lints]
+workspace = true

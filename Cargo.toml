@@ -15,6 +15,7 @@ members = [
     "keccak",
     "keccak-air",
     "kzg",
+    "kzg-example",
     "matrix",
     "maybe-rayon",
     "mds",
@@ -99,6 +100,7 @@ p3-interpolation = { path = "interpolation", version = "0.3.0" }
 p3-keccak = { path = "keccak", version = "0.3.0" }
 p3-keccak-air = { path = "keccak-air", version = "0.3.0" }
 p3-kzg = { path = "kzg", version = "0.3.0" }
+p3-kzg-example = { path = "kzg-example", version = "0.3.0" }
 p3-matrix = { path = "matrix", version = "0.3.0" }
 p3-maybe-rayon = { path = "maybe-rayon", version = "0.3.0" }
 p3-mds = { path = "mds", version = "0.3.0" }
