@@ -35,7 +35,7 @@ fn main() {
     println!("=== Fibonacci KZG Example ===\n");
 
     // Configuration
-    let num_steps = 128; // Compute 128 Fibonacci numbers
+    let num_steps = 1024; // Compute 1024 Fibonacci numbers
     let max_degree = 1 << 12; // 4096 - should be larger than trace size
 
     println!("Configuration:");

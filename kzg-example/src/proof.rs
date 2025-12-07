@@ -13,8 +13,7 @@ use crate::FibonacciAir;
 pub type KzgStarkConfig<Perm> = StarkConfig<KzgPcs, Bn254Fr, DuplexChallenger<Bn254Fr, Perm, 3, 2>>;
 
 /// Result type for KZG-based Fibonacci proofs
-pub type FibonacciProofResult<Perm> =
-    Result<(), VerificationError<PcsError<KzgStarkConfig<Perm>>>>;
+pub type FibonacciProofResult<Perm> = Result<(), VerificationError<PcsError<KzgStarkConfig<Perm>>>>;
 
 /// Generate and verify a STARK proof for the Fibonacci sequence using KZG commitments
 ///

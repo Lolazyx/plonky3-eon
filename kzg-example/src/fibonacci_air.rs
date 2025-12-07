@@ -83,7 +83,9 @@ where
 
         // Transition constraints:
         // 1. next[0] should equal current[1]
-        builder.when_transition().assert_eq(next_0, current_1.clone());
+        builder
+            .when_transition()
+            .assert_eq(next_0, current_1.clone());
 
         // 2. next[1] should equal current[0] + current[1]
         builder

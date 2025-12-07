@@ -1,0 +1,35 @@
+Proving F_1024 over BabyBear using FRI (1024 trace rows)
+Trace built in 137.5µs
+INFO     prove [ 356ms | 0.00% / 100.00% ]
+INFO     ┕━ prove_with_preprocessed [ 356ms | 0.08% / 100.00% ]
+INFO        ┝━ check_constraints [ 1.03ms | 0.29% ]
+INFO        ┝━ get_log_num_quotient_chunks [ 61.8µs | 0.00% / 0.02% ]
+INFO        │  ┕━ infer log of base and extension constraint degree [ 46.2µs | 0.01% ]
+INFO        ┝━ commit to trace data [ 80.9ms | 19.98% / 22.73% ]
+INFO        │  ┕━ coset_lde_batch [ 9.76ms | 2.74% ] dims: 2x1024 | added_bits: 1
+INFO        ┝━ quotient_values [ 2.36ms | 0.66% ]
+INFO        ┝━ commit to quotient poly chunks [ 66.1ms | 17.05% / 18.57% ]
+INFO        │  ┕━ coset_lde_batch [ 5.44ms | 1.53% ] dims: 4x1024 | added_bits: 1
+INFO        ┕━ open [ 205ms | 0.05% / 57.64% ]
+INFO           ┝━ compute_inverse_denominators [ 4.66ms | 1.31% ]
+INFO           ┝━ evaluate matrix [ 1.26ms | 0.01% / 0.35% ] dims: 2x2048
+INFO           │  ┕━ compute opened values with Lagrange interpolation [ 1.22ms | 0.34% ]
+INFO           ┝━ evaluate matrix [ 1.27ms | 0.01% / 0.36% ] dims: 2x2048
+INFO           │  ┕━ compute opened values with Lagrange interpolation [ 1.23ms | 0.35% ]
+INFO           ┝━ evaluate matrix [ 1.29ms | 0.02% / 0.36% ] dims: 4x2048
+INFO           │  ┕━ compute opened values with Lagrange interpolation [ 1.22ms | 0.34% ]
+INFO           ┝━ reduce matrix quotient [ 5.60ms | 0.92% / 1.57% ] dims: 2x2048
+INFO           │  ┕━ compress mat [ 2.32ms | 0.65% ]
+INFO           ┝━ reduce matrix quotient [ 3.97ms | 0.47% / 1.12% ] dims: 4x2048
+INFO           │  ┕━ compress mat [ 2.32ms | 0.65% ]
+INFO           ┕━ FRI prover [ 187ms | 0.01% / 52.52% ]
+INFO              ┝━ commit phase [ 64.2ms | 18.04% ]
+INFO              ┝━ grind for proof-of-work witness [ 120ms | 33.86% ]
+INFO              ┕━ query phase [ 2.16ms | 0.61% ]
+Proving completed in 356.321709ms
+Proof size: 279800 bytes
+INFO     verify [ 249ms | 0.01% / 100.00% ]
+INFO     ┕━ verify_with_preprocessed [ 249ms | 99.98% / 99.99% ]
+INFO        ┕━ get_log_num_quotient_chunks [ 24.7µs | 0.00% / 0.01% ]
+INFO           ┕━ infer log of base and extension constraint degree [ 18.3µs | 0.01% ]
+Verification completed in 249.472666ms
