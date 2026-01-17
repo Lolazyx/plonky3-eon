@@ -8,6 +8,8 @@ members = [
     "challenger",
     "commit",
     "dft",
+    "eon-air", 
+    "eon-uni-stark",
     # "examples",
     "field",
     "field-testing",
@@ -16,6 +18,7 @@ members = [
     "keccak-air",
     "kzg",
     "kzg-example",
+    "lookup",
     "matrix",
     "maybe-rayon",
     "mds",
@@ -93,6 +96,7 @@ p3-bn254 = { path = "bn254", version = "0.3.0" }
 p3-challenger = { path = "challenger", version = "0.3.0" }
 p3-commit = { path = "commit", version = "0.3.0" }
 p3-dft = { path = "dft", version = "0.3.0" }
+eon-air = { path = "eon-air", version = "0.3.0" }
 # p3-examples = { path = "examples", version = "0.3.0" }
 p3-field = { path = "field", version = "0.3.0" }
 p3-field-testing = { path = "field-testing", version = "0.3.0" }
@@ -101,6 +105,7 @@ p3-keccak = { path = "keccak", version = "0.3.0" }
 p3-keccak-air = { path = "keccak-air", version = "0.3.0" }
 p3-kzg = { path = "kzg", version = "0.3.0" }
 p3-kzg-example = { path = "kzg-example", version = "0.3.0" }
+p3-lookup = {path = "lookup", version = "0.3.0" }
 p3-matrix = { path = "matrix", version = "0.3.0" }
 p3-maybe-rayon = { path = "maybe-rayon", version = "0.3.0" }
 p3-mds = { path = "mds", version = "0.3.0" }
