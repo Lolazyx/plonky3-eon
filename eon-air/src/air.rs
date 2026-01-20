@@ -1,4 +1,5 @@
 use crate::{EonAirBuilder, RowMajorMatrix};
+use alloc::vec;
 use alloc::vec::Vec;
 use p3_field::Field;
 use p3_lookup::lookup_traits::{Kind, Lookup, LookupInput};
@@ -25,7 +26,7 @@ use p3_lookup::lookup_traits::{Kind, Lookup, LookupInput};
 /// # Optional Methods (with default implementations)
 ///
 /// All other methods have default implementations that can be overridden as needed.
-pub trait EonAir<F, EF>: Sync {
+pub trait EonAir<F: Field, EF>: Sync {
     // ==================== BaseAir Methods ====================
 
     /// The number of columns (a.k.a. registers) in this AIR.

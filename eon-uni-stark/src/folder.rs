@@ -1,4 +1,7 @@
-use eon_air::EonAirBuilder;
+use alloc::vec::Vec;
+
+use p3_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder};
+use p3_field::{BasedVectorSpace, PackedField};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::ViewPair;
 
@@ -11,16 +14,11 @@ use crate::{PackedChallenge, PackedVal, StarkGenericConfig, Val};
 /// `C_0 + alpha C_1 + alpha^2 C_2 + ...`
 #[derive(Debug)]
 pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
-    /// The matrix containing rows on which the constraint polynomial is to be evaluated
+    /// The [`RowMajorMatrixView`] containing rows on which the constraint polynomial is evaluated.
     pub main: RowMajorMatrixView<'a, PackedVal<SC>>,
-    /// The matrix containing rows on which the aux constraint polynomial is to be evaluated (may have zero width)
-    pub permutation: RowMajorMatrixView<'a, PackedChallenge<SC>>,
-    /// The randomness used to compute the aux trace; can be zero width.
-    /// Cached EF randomness packed from base randomness to avoid temporary leaks
-    pub permutation_challenges: Vec<PackedChallenge<SC>>,
-    /// The preprocessed columns (if any)
+    /// The preprocessed columns (if any) as a [`RowMajorMatrixView`].
     pub preprocessed: Option<RowMajorMatrixView<'a, PackedVal<SC>>>,
-    /// Public inputs to the AIR
+    /// Public inputs to the [AIR]([`p3_air::Air`]) implementation.
     pub public_values: &'a [Val<SC>],
     /// Evaluations of the Selector polynomial for the first row of the trace
     pub is_first_row: PackedVal<SC>,
@@ -39,94 +37,15 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     pub constraint_index: usize,
 }
 
-impl<'a, SC: StarkGenericConfig> EonAirBuilder for ProverConstraintFolder<'a, SC> {
-    type F = Val<SC>;
-    type Expr = PackedVal<SC>;
-    type Var = PackedVal<SC>;
-    type M = RowMajorMatrixView<'a, PackedVal<SC>>;
-    type PublicVar = Val<SC>;
-    type EF = SC::Challenge;
-    type ExprEF = PackedChallenge<SC>;
-    type VarEF = PackedChallenge<SC>;
-    type MP = RowMajorMatrixView<'a, PackedChallenge<SC>>;
-    type RandomVar = PackedChallenge<SC>;
-
-    #[inline]
-    fn main(&self) -> Self::M {
-        self.main
-    }
-
-    #[inline]
-    fn is_first_row(&self) -> Self::Expr {
-        self.is_first_row
-    }
-
-    #[inline]
-    fn is_last_row(&self) -> Self::Expr {
-        self.is_last_row
-    }
-
-    #[inline]
-    fn is_transition_window(&self, size: usize) -> Self::Expr {
-        if size == 2 {
-            self.is_transition
-        } else {
-            panic!("eon-prover only supports a window size of 2")
-        }
-    }
-
-    #[inline]
-    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
-        let alpha_power = self.alpha_powers[self.constraint_index];
-        self.accumulator += Into::<PackedChallenge<SC>>::into(alpha_power) * x.into();
-        self.constraint_index += 1;
-    }
-
-    #[inline]
-    fn public_values(&self) -> &[Self::PublicVar] {
-        self.public_values
-    }
-
-    #[inline]
-    fn preprocessed(&self) -> Self::M {
-        self.preprocessed
-            .expect("Air does not provide preprocessed columns, hence can not be consumed")
-    }
-
-    #[inline]
-    fn assert_zero_ext<I>(&mut self, x: I)
-    where
-        I: Into<Self::ExprEF>,
-    {
-        let alpha_power = self.alpha_powers[self.constraint_index];
-        self.accumulator += Into::<PackedChallenge<SC>>::into(alpha_power) * x.into();
-        self.constraint_index += 1;
-    }
-
-    #[inline]
-    fn permutation(&self) -> Self::MP {
-        self.permutation
-    }
-
-    #[inline]
-    fn permutation_randomness(&self) -> &[Self::RandomVar] {
-        self.permutation_challenges.as_slice()
-    }
-}
-
 /// Handles constraint verification for the verifier in a STARK system.
 ///
-/// Similar to ProverConstraintFolder but operates on committed values rather than the full trace,
+/// Similar to [`ProverConstraintFolder`] but operates on committed values rather than the full trace,
 /// using a more efficient accumulation method for verification.
 #[derive(Debug)]
 pub struct VerifierConstraintFolder<'a, SC: StarkGenericConfig> {
-    /// Pair of consecutive rows from the committed polynomial evaluations
+    /// Pair of consecutive rows from the committed polynomial evaluations as a [`ViewPair`].
     pub main: ViewPair<'a, SC::Challenge>,
-    /// Pair of consecutive rows from the committed polynomial evaluations (may have zero width)
-    pub permutation: ViewPair<'a, SC::Challenge>,
-    /// The randomness used to compute the permutation trace; can be zero width.
-    pub permutation_challenges: &'a [SC::Challenge],
-    /// The preprocessed columns (if any)
+    /// The preprocessed columns (if any) as a [`ViewPair`].
     pub preprocessed: Option<ViewPair<'a, SC::Challenge>>,
     /// Public values that are inputs to the computation
     pub public_values: &'a [Val<SC>],
@@ -142,17 +61,11 @@ pub struct VerifierConstraintFolder<'a, SC: StarkGenericConfig> {
     pub accumulator: SC::Challenge,
 }
 
-impl<'a, SC: StarkGenericConfig> EonAirBuilder for VerifierConstraintFolder<'a, SC> {
+impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
     type F = Val<SC>;
-    type Expr = SC::Challenge;
-    type Var = SC::Challenge;
-    type M = ViewPair<'a, SC::Challenge>;
-    type PublicVar = Val<SC>;
-    type EF = SC::Challenge;
-    type ExprEF = SC::Challenge;
-    type VarEF = SC::Challenge;
-    type MP = ViewPair<'a, SC::Challenge>;
-    type RandomVar = SC::Challenge;
+    type Expr = PackedVal<SC>;
+    type Var = PackedVal<SC>;
+    type M = RowMajorMatrixView<'a, PackedVal<SC>>;
 
     #[inline]
     fn main(&self) -> Self::M {
@@ -169,46 +82,102 @@ impl<'a, SC: StarkGenericConfig> EonAirBuilder for VerifierConstraintFolder<'a, 
         self.is_last_row
     }
 
+    /// Returns an expression indicating rows where transition constraints should be checked.
+    ///
+    /// # Panics
+    /// This function panics if `size` is not `2`.
     #[inline]
     fn is_transition_window(&self, size: usize) -> Self::Expr {
         if size == 2 {
             self.is_transition
         } else {
-            panic!("eon-prover only supports a window size of 2")
+            panic!("uni-stark only supports a window size of 2")
         }
     }
 
     #[inline]
     fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
-        self.accumulator = self.accumulator * self.alpha + x.into();
+        let alpha_power = self.alpha_powers[self.constraint_index];
+        self.accumulator += Into::<PackedChallenge<SC>>::into(alpha_power) * x.into();
+        self.constraint_index += 1;
     }
 
     #[inline]
-    fn public_values(&self) -> &[Self::PublicVar] {
+    fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, array: [I; N]) {
+        let expr_array = array.map(Into::into);
+        self.accumulator += PackedChallenge::<SC>::from_basis_coefficients_fn(|i| {
+            let alpha_powers = &self.decomposed_alpha_powers[i]
+                [self.constraint_index..(self.constraint_index + N)];
+            PackedVal::<SC>::packed_linear_combination::<N>(alpha_powers, &expr_array)
+        });
+        self.constraint_index += N;
+    }
+}
+
+impl<SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraintFolder<'_, SC> {
+    type PublicVar = Self::F;
+
+    #[inline]
+    fn public_values(&self) -> &[Self::F] {
         self.public_values
     }
+}
 
+impl<'a, SC: StarkGenericConfig> PairBuilder for ProverConstraintFolder<'a, SC> {
     #[inline]
     fn preprocessed(&self) -> Self::M {
         self.preprocessed
             .expect("Air does not provide preprocessed columns, hence can not be consumed")
     }
+}
 
-    #[inline]
-    fn assert_zero_ext<I>(&mut self, x: I)
-    where
-        I: Into<Self::ExprEF>,
-    {
-        self.accumulator = self.accumulator * self.alpha + x.into();
+impl<'a, SC: StarkGenericConfig> AirBuilder for VerifierConstraintFolder<'a, SC> {
+    type F = Val<SC>;
+    type Expr = SC::Challenge;
+    type Var = SC::Challenge;
+    type M = ViewPair<'a, SC::Challenge>;
+
+    fn main(&self) -> Self::M {
+        self.main
     }
 
-    #[inline]
-    fn permutation(&self) -> Self::MP {
-        self.permutation
+    fn is_first_row(&self) -> Self::Expr {
+        self.is_first_row
     }
 
-    #[inline]
-    fn permutation_randomness(&self) -> &[Self::RandomVar] {
-        self.permutation_challenges
+    fn is_last_row(&self) -> Self::Expr {
+        self.is_last_row
+    }
+
+    /// Returns an expression indicating rows where transition constraints should be checked.
+    ///
+    /// # Panics
+    /// This function panics if `size` is not `2`.
+    fn is_transition_window(&self, size: usize) -> Self::Expr {
+        if size == 2 {
+            self.is_transition
+        } else {
+            panic!("uni-stark only supports a window size of 2")
+        }
+    }
+
+    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+        self.accumulator *= self.alpha;
+        self.accumulator += x.into();
+    }
+}
+
+impl<SC: StarkGenericConfig> AirBuilderWithPublicValues for VerifierConstraintFolder<'_, SC> {
+    type PublicVar = Self::F;
+
+    fn public_values(&self) -> &[Self::F] {
+        self.public_values
+    }
+}
+
+impl<'a, SC: StarkGenericConfig> PairBuilder for VerifierConstraintFolder<'a, SC> {
+    fn preprocessed(&self) -> Self::M {
+        self.preprocessed
+            .expect("Air does not provide preprocessed columns, hence can not be consumed")
     }
 }

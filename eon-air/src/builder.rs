@@ -1,6 +1,7 @@
 use core::ops::{Add, Mul, Sub};
 
 use crate::{Algebra, Field, FilteredEonAirBuilder, Matrix, PrimeCharacteristicRing};
+use p3_field::ExtensionField;
 
 /// Super trait for all AIR builders in the Eon ecosystem.
 ///
@@ -67,11 +68,11 @@ pub trait EonAirBuilder: Sized {
     // ==================== Associated Types from ExtensionBuilder ====================
 
     /// Extension field type.
-    // type EF: ExtensionField<Self::F>;
-    type EF: Field + Sync;
+    type EF: ExtensionField<Self::F> + Sync;
+    // type EF: Field + Sync;
 
     /// Expression type over extension field elements.
-    type ExprEF: Algebra<Self::Expr> + Algebra<Self::EF>;
+    type ExprEF: Algebra<Self::Expr> + Algebra<Self::EF> + From<Self::F>;
 
     /// Variable type over extension field elements.
     type VarEF: Into<Self::ExprEF> + Copy + Send + Sync;

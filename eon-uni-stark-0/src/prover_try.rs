@@ -1,11 +1,13 @@
-use alloc::vec;
-use alloc::vec::Vec;
-
+use crate::symbolic_builder::SymbolicAirBuilder;
+use eon_air::EonAir;
 use itertools::Itertools;
-use p3_air::Air;
 use p3_challenger::{CanObserve, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
-use p3_field::{BasedVectorSpace, PackedValue, PrimeCharacteristicRing};
+use p3_field::{BasedVectorSpace, PackedValue, PrimeCharacteristicRing, TwoAdicField};
+use p3_lookup::folder::ProverConstraintFolderWithLookups;
+use p3_lookup::logup::LogUpGadget;
+use p3_lookup::lookup_traits::LookupData;
+use p3_lookup::lookup_traits::{AirLookupHandler, LookupGadget};
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::*;
@@ -13,75 +15,68 @@ use p3_util::log2_strict_usize;
 use tracing::{debug_span, info_span, instrument};
 
 use crate::{
-    Commitments, Domain, OpenedValues, PackedChallenge, PackedVal, PreprocessedProverData, Proof,
-    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, Val,
-    get_log_num_quotient_chunks, get_symbolic_constraints,
+    Commitments, Domain, OpenedValues, PackedChallenge, PackedVal, Proof, ProverConstraintFolder,
+    StarkGenericConfig, Val, get_log_quotient_degree, get_symbolic_constraints,
 };
+
+/// Commits the preprocessed trace if present.
+/// Returns the commitment hash and prover data (available iff preprocessed is Some).
+#[allow(clippy::type_complexity)]
+fn commit_preprocessed_trace<SC>(
+    preprocessed: RowMajorMatrix<Val<SC>>,
+    pcs: &SC::Pcs,
+    trace_domain: <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain,
+) -> (
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment,
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::ProverData,
+)
+where
+    SC: StarkGenericConfig,
+{
+    debug_span!("commit to preprocessed trace")
+        .in_scope(|| pcs.commit([(trace_domain, preprocessed)]))
+}
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
-pub fn prove_with_preprocessed<
-    SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>>>,
-    #[cfg(not(debug_assertions))] A,
->(
+pub fn prove<SC, A>(
     config: &SC,
-    air: &A,
-    trace: RowMajorMatrix<Val<SC>>,
+    air: &mut A,
+    trace: &RowMajorMatrix<Val<SC>>,
     public_values: &[Val<SC>],
-    preprocessed: Option<&PreprocessedProverData<SC>>,
 ) -> Proof<SC>
 where
-    SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
+    SC: StarkGenericConfig + Sync,
+    A: EonAir<Val<SC>, SC::Challenge>
+        + AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> AirLookupHandler<
+            crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>,
+        >,
+    Val<SC>: TwoAdicField,
 {
-    #[cfg(debug_assertions)]
-    crate::check_constraints::check_constraints(air, &trace, public_values);
-
     // Compute the height `N = 2^n` and `log_2(height)`, `n`, of the trace.
     let degree = trace.height();
     let log_degree = log2_strict_usize(degree);
     let log_ext_degree = log_degree + config.is_zk();
 
-    // Get preprocessed width for symbolic constraint evaluation.
-    //
-    // - If reusable preprocessed prover data is provided, trust its width and degree_bits
-    //   (and enforce consistency).
-    // - Otherwise, if the AIR defines preprocessed columns, we treat it as an error:
-    //   callers must use `setup_preprocessed` and pass the resulting data in.
-    let preprocessed_width = preprocessed.map_or_else(
-        || {
-            if let Some(preprocessed_trace) = air.preprocessed_trace() {
-                let width = preprocessed_trace.width();
-                if width > 0 {
-                    panic!(
-                        "AIR defines preprocessed columns (width = {}), \
-                         but no PreprocessedProverData was provided. \
-                         Call `setup_preprocessed` and pass it to `prove_with_preprocessed`.",
-                        width
-                    );
-                }
-            }
-            0
-        },
-        |pp| {
-            // Preprocessed columns are currently only supported in non-ZK mode.
-            assert_eq!(
-                config.is_zk(),
-                0,
-                "preprocessed columns are not supported in zk mode"
-            );
-            assert_eq!(
-                pp.degree_bits, log_ext_degree,
-                "PreprocessedProverData degree_bits does not match trace degree_bits"
-            );
-            pp.width
-        },
-    );
+    // Get preprocessed trace and its width for symbolic constraint evaluation
+    let preprocessed_trace = <A as EonAir<Val<SC>, SC::Challenge>>::preprocessed_trace(air);
+    let preprocessed_width = preprocessed_trace.as_ref().map(|m| m.width).unwrap_or(0);
 
     // Compute the constraint polynomials as vectors of symbolic expressions.
-    let symbolic_constraints =
-        get_symbolic_constraints(air, preprocessed_width, public_values.len());
+    let lookup_gadget = LogUpGadget;
+    let lookups = <A as EonAir<Val<SC>, SC::Challenge>>::get_lookups(air);
+
+    let permutation_width = lookups.len() * lookup_gadget.num_aux_cols();
+    let num_randomness = lookups.len() * lookup_gadget.num_challenges();
+    let has_lookups = !lookups.is_empty();
+    let symbolic_constraints = get_symbolic_constraints(
+        air,
+        preprocessed_width,
+        public_values.len(),
+        permutation_width,
+        num_randomness,
+    );
 
     // Count the number of constraints that we have.
     let constraint_count = symbolic_constraints.len();
@@ -119,14 +114,15 @@ where
     // From the degree of the constraint polynomial, compute the number
     // of quotient polynomials we will split Q(x) into. This is chosen to
     // always be a power of 2.
-    let log_num_quotient_chunks = get_log_num_quotient_chunks::<Val<SC>, A>(
+    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, SC::Challenge, _>(
         air,
         preprocessed_width,
         public_values.len(),
         config.is_zk(),
+        permutation_width,
+        num_randomness,
     );
-
-    let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
+    let quotient_degree = 1 << (log_quotient_degree + config.is_zk());
 
     // Initialize the PCS and the Challenger.
     let pcs = config.pcs();
@@ -150,13 +146,20 @@ where
     //      trace_commit contains the root of the tree
     //      trace_data contains the entire tree.
     //          - trace_data.leaves is the matrix containing `ET`.
-    let (trace_commit, trace_data) =
-        info_span!("commit to trace data").in_scope(|| pcs.commit([(ext_trace_domain, trace)]));
+    // Note: commit() automatically uses the optimized single-matrix path when given a single matrix
+    let (trace_commit, trace_data) = info_span!("commit to trace data")
+        .in_scope(|| pcs.commit([(ext_trace_domain, trace.clone())]));
 
-    // Preprocessed commitment and prover data (if any).
-    let (preprocessed_commit, preprocessed_data_ref) = preprocessed
-        .map(|pp| (pp.commitment.clone(), &pp.prover_data))
-        .unzip();
+    let (preprocessed_commit, preprocessed_data) = preprocessed_trace.map_or_else(
+        || (None, None),
+        |preprocessed| {
+            let (commit, data) =
+                commit_preprocessed_trace::<SC>(preprocessed.clone(), pcs, ext_trace_domain);
+            #[cfg(debug_assertions)]
+            assert_eq!(config.is_zk(), 0); // TODO: preprocessed columns not supported in zk mode
+            (Some(commit), Some(data))
+        },
+    );
 
     // Observe the instance.
     // degree < 2^255 so we can safely cast log_degree to a u8.
@@ -173,6 +176,51 @@ where
 
     // Observe the public input values.
     challenger.observe_slice(public_values);
+
+    // Lookup handling: build the permutation trace and observe its commitment.
+    let perm_challenges: Vec<SC::Challenge> = (0..num_randomness)
+        .map(|_| challenger.sample_algebra_element())
+        .collect();
+    #[cfg(debug_assertions)]
+    let mut permutation_trace_dbg = None;
+
+    let (perm_commit_opt, perm_data_opt, lookup_data_opt) = if has_lookups {
+        let mut lookup_data = vec![LookupData::default(); lookups.len()];
+
+        let permutation_trace = lookup_gadget.generate_permutation(
+            trace,
+            &preprocessed_trace,
+            public_values,
+            &lookups,
+            &mut lookup_data,
+            &perm_challenges,
+        );
+
+        #[cfg(debug_assertions)]
+        {
+            permutation_trace_dbg = Some(permutation_trace.clone());
+        }
+
+        let (perm_commit, perm_data) = info_span!("commit to permutation trace")
+            .in_scope(|| pcs.commit([(ext_trace_domain, permutation_trace)]));
+
+        challenger.observe(perm_commit.clone());
+        (Some(perm_commit), Some(perm_data), Some(lookup_data))
+    } else {
+        (None, None, None)
+    };
+
+    #[cfg(debug_assertions)]
+    crate::check_constraints::<Val<SC>, SC::Challenge, _, _>(
+        air,
+        trace,
+        permutation_trace_dbg.as_ref(), // Option<&RowMajorMatrix<EF>>
+        &perm_challenges,               // &[EF]
+        public_values,                  // &[F]
+        &lookups,                       // &[Lookup<F>]
+        lookup_data_opt.as_deref().unwrap_or(&[]), // &[LookupData<EF>]
+        &lookup_gadget,                 // &LG
+    );
 
     // Get the first Fiat Shamir challenge which will be used to combine all constraint polynomials
     // into a single polynomial.
@@ -194,13 +242,14 @@ where
     // so such tampering should be obvious to spot. The verifier needs to check the AIR anyway to
     // confirm that satisfying it indeed proves what the prover claims. Hence this should not be
     // a soundness issue.
+
     let alpha: SC::Challenge = challenger.sample_algebra_element();
 
     // A domain large enough to uniquely identify the quotient polynomial.
     // This domain must be contained in the domain over which `trace_data` is defined.
     // Explicitly it should be equal to `gK` for some subgroup `K` contained in `H'`.
     let quotient_domain =
-        ext_trace_domain.create_disjoint_domain(1 << (log_ext_degree + log_num_quotient_chunks));
+        ext_trace_domain.create_disjoint_domain(1 << (log_ext_degree + log_quotient_degree));
 
     // Return a the subset of the extended trace `ET` corresponding to the rows giving evaluations
     // over the quotient domain.
@@ -208,20 +257,30 @@ where
     // This only works if the trace domain is `gH'` and the quotient domain is `gK` for some subgroup `K` contained in `H'`.
     // TODO: Make this explicit in `get_evaluations_on_domain` or otherwise fix this.
     let trace_on_quotient_domain = pcs.get_evaluations_on_domain(&trace_data, 0, quotient_domain);
-    let preprocessed_on_quotient_domain =
-        preprocessed_data_ref.map(|data| pcs.get_evaluations_on_domain(data, 0, quotient_domain));
+    let permutation_on_quotient_domain = perm_data_opt
+        .as_ref()
+        .map(|data| pcs.get_evaluations_on_domain(data, 0, quotient_domain));
+
+    let preprocessed_on_quotient_domain = preprocessed_data
+        .as_ref()
+        .map(|data| pcs.get_evaluations_on_domain(data, 0, quotient_domain));
 
     // Compute the quotient polynomial `Q(x)` by evaluating
     //          `C(T_1(x), ..., T_w(x), T_1(hx), ..., T_w(hx), selectors(x)) / Z_H(x)`
     // at every point in the quotient domain. The degree of `Q(x)` is `<= deg(C(x)) - N = 2N - 2` in the case
     // where `deg(C) = 3`. (See the discussion above constraint_degree for more details.)
-    let quotient_values = quotient_values(
+    let quotient_values: Vec<SC::Challenge> = quotient_values::<SC, _, _>(
         air,
+        &lookup_gadget,
+        &lookups,
+        lookup_data_opt.as_deref(),
+        &perm_challenges,
         public_values,
         trace_domain,
         quotient_domain,
         &trace_on_quotient_domain,
-        preprocessed_on_quotient_domain.as_ref(),
+        permutation_on_quotient_domain.as_ref(),
+        preprocessed_on_quotient_domain.as_deref(),
         alpha,
         constraint_count,
     );
@@ -254,7 +313,7 @@ where
     //      quotient_data contains the entire tree.
     //          - quotient_data.leaves is a pair of matrices containing the `q_i0(x)` and `q_i1(x)`.
     let (quotient_commit, quotient_data) = info_span!("commit to quotient poly chunks")
-        .in_scope(|| pcs.commit_quotient(quotient_domain, quotient_flat, num_quotient_chunks));
+        .in_scope(|| pcs.commit_quotient(quotient_domain, quotient_flat, quotient_degree));
     challenger.observe(quotient_commit.clone());
 
     // If zk is enabled, we generate random extension field values of the size of the randomized trace. If `n` is the degree of the initial trace,
@@ -278,6 +337,7 @@ where
     // will be passed to the verifier.
     let commitments = Commitments {
         trace: trace_commit,
+        permutation: perm_commit_opt.clone(),
         quotient_chunks: quotient_commit,
         random: opt_r_commit.clone(),
     };
@@ -304,43 +364,53 @@ where
 
     let is_random = opt_r_data.is_some();
     let (opened_values, opening_proof) = info_span!("open").in_scope(|| {
-        let round0 = opt_r_data.as_ref().map(|r_data| (r_data, vec![vec![zeta]]));
-        let round1 = (&trace_data, vec![vec![zeta, zeta_next]]);
-        let round2 = (&quotient_data, vec![vec![zeta]; num_quotient_chunks]); // open every chunk at zeta
-        let round3 = preprocessed_data_ref.map(|data| (data, vec![vec![zeta, zeta_next]]));
-
-        let rounds = round0
-            .into_iter()
-            .chain([round1, round2])
-            .chain(round3)
-            .collect();
+        let mut rounds = vec![];
+        if let Some(r_data) = opt_r_data.as_ref() {
+            rounds.push((r_data, vec![vec![zeta]]));
+        }
+        rounds.push((&trace_data, vec![vec![zeta, zeta_next]]));
+        if let Some(perm_data) = perm_data_opt.as_ref() {
+            rounds.push((perm_data, vec![vec![zeta, zeta_next]]));
+        }
+        rounds.push((&quotient_data, vec![vec![zeta]; quotient_degree])); // open every chunk at zeta
+        if let Some(preprocessed_data) = preprocessed_data.as_ref() {
+            rounds.push((preprocessed_data, vec![vec![zeta, zeta_next]]));
+        }
 
         pcs.open(rounds, &mut challenger)
     });
-    let trace_idx = SC::Pcs::TRACE_IDX;
-    let quotient_idx = SC::Pcs::QUOTIENT_IDX;
-    let trace_local = opened_values[trace_idx][0][0].clone();
-    let trace_next = opened_values[trace_idx][0][1].clone();
-    let quotient_chunks = opened_values[quotient_idx]
-        .iter()
-        .map(|v| v[0].clone())
-        .collect_vec();
+
     let random = if is_random {
         Some(opened_values[0][0][0].clone())
     } else {
         None
     };
+
+    let mut cur_index = SC::Pcs::TRACE_IDX;
+    let trace_local = opened_values[cur_index][0][0].clone();
+    let trace_next = opened_values[cur_index][0][1].clone();
+
+    cur_index = SC::Pcs::QUOTIENT_IDX;
+    let quotient_chunks = opened_values[cur_index]
+        .iter()
+        .map(|v| v[0].clone())
+        .collect_vec();
+    cur_index += 1;
+
     let (preprocessed_local, preprocessed_next) = if preprocessed_width > 0 {
         (
-            Some(opened_values[SC::Pcs::PREPROCESSED_TRACE_IDX][0][0].clone()),
-            Some(opened_values[SC::Pcs::PREPROCESSED_TRACE_IDX][0][1].clone()),
+            Some(opened_values[cur_index][0][0].clone()),
+            Some(opened_values[cur_index][0][1].clone()),
         )
     } else {
         (None, None)
     };
+
     let opened_values = OpenedValues {
         trace_local,
         trace_next,
+        permutation_local,
+        permutation_next,
         preprocessed_local,
         preprocessed_next,
         quotient_chunks,
@@ -350,46 +420,36 @@ where
         commitments,
         opened_values,
         opening_proof,
+        lookup_data: lookup_data_opt,
         degree_bits: log_ext_degree,
     }
 }
 
-#[instrument(skip_all)]
-#[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
-pub fn prove<
-    SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>>>,
-    #[cfg(not(debug_assertions))] A,
->(
-    config: &SC,
-    air: &A,
-    trace: RowMajorMatrix<Val<SC>>,
-    public_values: &[Val<SC>],
-) -> Proof<SC>
-where
-    SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
-{
-    prove_with_preprocessed::<SC, A>(config, air, trace, public_values, None)
-}
-
-#[instrument(skip_all)]
 // TODO: Group some arguments to remove the `allow`?
+#[instrument(name = "compute quotient polynomial", skip_all)]
 #[allow(clippy::too_many_arguments)]
 pub fn quotient_values<SC, A, Mat>(
-    air: &A,
+    air: &mut A,
+    lookup_gadget: &impl p3_lookup::lookup_traits::LookupGadget,
+    lookups: &[p3_lookup::lookup_traits::Lookup<Val<SC>>],
+    lookup_data: Option<&[p3_lookup::lookup_traits::LookupData]>,
+    perm_challenges: &[SC::Challenge],
     public_values: &[Val<SC>],
     trace_domain: Domain<SC>,
     quotient_domain: Domain<SC>,
     trace_on_quotient_domain: &Mat,
+    permutation_on_quotient_domain: Option<&Mat>,
     preprocessed_on_quotient_domain: Option<&Mat>,
     alpha: SC::Challenge,
     constraint_count: usize,
 ) -> Vec<SC::Challenge>
 where
-    SC: StarkGenericConfig,
-    A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
+    SC: StarkGenericConfig + Sync,
+    A: EonAir<Val<SC>, SC::Challenge>,
+    for<'a> A:
+        p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolderWithLookups<'a, SC>>,
     Mat: Matrix<Val<SC>> + Sync,
+    Val<SC>: TwoAdicField,
 {
     let quotient_size = quotient_domain.size();
     let width = trace_on_quotient_domain.width();
@@ -429,24 +489,37 @@ where
             let is_first_row = *PackedVal::<SC>::from_slice(&sels.is_first_row[i_range.clone()]);
             let is_last_row = *PackedVal::<SC>::from_slice(&sels.is_last_row[i_range.clone()]);
             let is_transition = *PackedVal::<SC>::from_slice(&sels.is_transition[i_range.clone()]);
-            let inv_vanishing = *PackedVal::<SC>::from_slice(&sels.inv_vanishing[i_range]);
+            let inv_vanishing = *PackedVal::<SC>::from_slice(&sels.inv_vanishing[i_range.clone()]);
 
             let main = RowMajorMatrix::new(
-                trace_on_quotient_domain.vertically_packed_row_pair(i_start, next_step),
+                trace_on_quotient_domain
+                    .vertically_packed_row_pair::<PackedVal<SC>>(i_start, next_step),
                 width,
             );
+            let permutation = permutation_on_quotient_domain.map(|perm_trace| {
+                let perm_w = perm_trace.width();
+                RowMajorMatrix::new(
+                    perm_trace.vertically_packed_row_pair::<PackedVal<SC>>(i_start, next_step),
+                    perm_w,
+                )
+            });
 
             let preprocessed = preprocessed_on_quotient_domain.map(|preprocessed| {
                 let preprocessed_width = preprocessed.width();
                 RowMajorMatrix::new(
-                    preprocessed.vertically_packed_row_pair(i_start, next_step),
+                    preprocessed.vertically_packed_row_pair::<PackedVal<SC>>(i_start, next_step),
                     preprocessed_width,
                 )
             });
 
+            // Pack challenges for constraint evaluation
+            let packed_perm_challenges: Vec<PackedChallenge<SC>> =
+                perm_challenges.iter().copied().map(Into::into).collect();
+
             let accumulator = PackedChallenge::<SC>::ZERO;
-            let mut folder = ProverConstraintFolder {
+            let mut inner: ProverConstraintFolder<'_, SC> = ProverConstraintFolder {
                 main: main.as_view(),
+                permutation: permutation.as_ref().map(|m| m.as_view()),
                 preprocessed: preprocessed.as_ref().map(|m| m.as_view()),
                 public_values,
                 is_first_row,
@@ -456,8 +529,18 @@ where
                 decomposed_alpha_powers: &decomposed_alpha_powers,
                 accumulator,
                 constraint_index: 0,
+                permutation_challenges: packed_perm_challenges,
             };
-            air.eval(&mut folder);
+            let mut folder: ProverConstraintFolderWithLookups<'_, SC> =
+                ProverConstraintFolderWithLookups::new(
+                    inner,
+                    lookups,
+                    lookup_data.unwrap_or(&[]),
+                    perm_challenges,
+                    lookup_gadget,
+                );
+
+            p3_lookup::lookup_traits::AirLookupHandler::eval(air, &mut folder, lookup_gadget);
 
             // quotient(x) = constraints(x) / Z_H(x)
             let quotient = folder.accumulator * inv_vanishing;

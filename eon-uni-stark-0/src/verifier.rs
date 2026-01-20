@@ -1,24 +1,17 @@
-//! See [`crate::prover`] for an overview of the protocol and a more detailed soundness analysis.
-
-use alloc::vec::Vec;
-use alloc::{format, vec};
-
+//! See `prover.rs` for an overview of the protocol and a more detailed soundness analysis.
+use eon_air::EonAir;
 use itertools::Itertools;
-use p3_air::Air;
 use p3_challenger::{CanObserve, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
-use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing};
+use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing, TwoAdicField};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use p3_util::zip_eq::zip_eq;
-use thiserror::Error;
-use tracing::instrument;
+use tracing::{debug_span, instrument};
 
-use crate::symbolic_builder::{SymbolicAirBuilder, get_log_num_quotient_chunks};
-use crate::{
-    Domain, PcsError, PreprocessedVerifierKey, Proof, StarkGenericConfig, Val,
-    VerifierConstraintFolder,
-};
+use crate::symbolic_builder::get_log_quotient_degree;
+use crate::util::verifier_row_to_ext;
+use crate::{Domain, PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder};
 
 /// Recomposes the quotient polynomial from its chunks evaluated at a point.
 ///
@@ -68,7 +61,7 @@ where
 
 /// Verifies that the folded constraints match the quotient polynomial at zeta.
 ///
-/// This evaluates the [`Air`] constraints at the out-of-domain point and checks
+/// This evaluates the AIR constraints at the out-of-domain point and checks
 /// that constraints(zeta) / Z_H(zeta) = quotient(zeta).
 #[allow(clippy::too_many_arguments)]
 pub fn verify_constraints<SC, A, PcsErr>(
@@ -77,6 +70,10 @@ pub fn verify_constraints<SC, A, PcsErr>(
     trace_next: &[SC::Challenge],
     preprocessed_local: Option<&[SC::Challenge]>,
     preprocessed_next: Option<&[SC::Challenge]>,
+    aux_local: Option<&[SC::Challenge]>,
+    aux_next: Option<&[SC::Challenge]>,
+    randomness: &[SC::Challenge],
+    aux_bus_boundary_values: &[SC::Challenge],
     public_values: &[Val<SC>],
     trace_domain: Domain<SC>,
     zeta: SC::Challenge,
@@ -84,17 +81,23 @@ pub fn verify_constraints<SC, A, PcsErr>(
     quotient: SC::Challenge,
 ) -> Result<(), VerificationError<PcsErr>>
 where
-    SC: StarkGenericConfig,
-    A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
-    PcsErr: core::fmt::Debug,
+    SC: StarkGenericConfig + Sync,
+    A: EonAir<Val<SC>, SC::Challenge>,
+    Val<SC>: TwoAdicField,
 {
     let sels = trace_domain.selectors_at_point(zeta);
 
+    // =====================================
+    // Main trace
+    // =====================================
     let main = VerticalPair::new(
         RowMajorMatrixView::new_row(trace_local),
         RowMajorMatrixView::new_row(trace_next),
     );
 
+    // =====================================
+    // Preprocessed trace
+    // =====================================
     let preprocessed = match (preprocessed_local, preprocessed_next) {
         (Some(local), Some(next)) => Some(VerticalPair::new(
             RowMajorMatrixView::new_row(local),
@@ -103,8 +106,37 @@ where
         _ => None,
     };
 
-    let mut folder = VerifierConstraintFolder {
+    // =====================================
+    // Aux trace
+    // =====================================
+    // Aux trace is committed as flattened base limbs. Recompose into EF values.
+    let aux_local_ext;
+    let aux_next_ext;
+    let aux = match (aux_local, aux_next) {
+        (Some(local), Some(next)) => {
+            aux_local_ext = verifier_row_to_ext::<Val<SC>, SC::Challenge>(local)
+                .ok_or(VerificationError::InvalidProofShape)?;
+            aux_next_ext = verifier_row_to_ext::<Val<SC>, SC::Challenge>(next)
+                .ok_or(VerificationError::InvalidProofShape)?;
+
+            VerticalPair::new(
+                RowMajorMatrixView::new_row(&aux_local_ext),
+                RowMajorMatrixView::new_row(&aux_next_ext),
+            )
+        }
+        _ => {
+            // Create an empty ViewPair with zero width
+            let empty: &[SC::Challenge] = &[];
+            VerticalPair::new(
+                RowMajorMatrixView::new_row(empty),
+                RowMajorMatrixView::new_row(empty),
+            )
+        }
+    };
+    let mut folder: VerifierConstraintFolder<'_, SC> = VerifierConstraintFolder {
         main,
+        aux,
+        randomness,
         preprocessed,
         public_values,
         is_first_row: sels.is_first_row,
@@ -130,8 +162,9 @@ where
 fn process_preprocessed_trace<SC, A>(
     air: &A,
     opened_values: &crate::proof::OpenedValues<SC::Challenge>,
+    pcs: &SC::Pcs,
+    trace_domain: <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Domain,
     is_zk: usize,
-    preprocessed_vk: Option<&PreprocessedVerifierKey<SC>>,
 ) -> Result<
     (
         usize,
@@ -141,17 +174,12 @@ fn process_preprocessed_trace<SC, A>(
 >
 where
     SC: StarkGenericConfig,
-    A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    A: EonAir<Val<SC>, SC::Challenge>,
+    Val<SC>: TwoAdicField,
 {
-    // Determine expected preprocessed width.
-    // - If a verifier key is provided, trust its width.
-    // - Otherwise, derive width from the AIR's preprocessed trace (if any).
-    let preprocessed_width = preprocessed_vk
-        .map(|vk| vk.width)
-        .or_else(|| air.preprocessed_trace().as_ref().map(|m| m.width))
-        .unwrap_or(0);
-
-    // Check that the proof's opened preprocessed values match the expected width.
+    // If verifier asked for preprocessed trace, then proof should have it
+    let preprocessed = air.preprocessed_trace();
+    let preprocessed_width = preprocessed.as_ref().map(|m| m.width).unwrap_or(0);
     let preprocessed_local_len = opened_values
         .preprocessed_local
         .as_ref()
@@ -165,27 +193,19 @@ where
         return Err(VerificationError::InvalidProofShape);
     }
 
-    // Validate consistency between width, verifier key, and zk settings.
-    match (preprocessed_width, preprocessed_vk) {
-        // Case: No preprocessed columns.
-        //
-        // Valid only if no verifier key is provided.
-        (0, None) => Ok((0, None)),
-
-        // Case: Preprocessed columns exist.
-        //
-        // Valid only if VK exists, widths match, and we are NOT in zk mode.
-        (w, Some(vk)) if w == vk.width => {
-            // Preprocessed columns are currently only supported in non-zk mode.
-            assert_eq!(is_zk, 0, "preprocessed columns not supported in zk mode");
-            Ok((w, Some(vk.commitment.clone())))
-        }
-
-        // Catch-all for invalid states, such as:
-        // - Width is 0 but VK is provided.
-        // - Width > 0 but VK is missing.
-        // - Width > 0 but VK width mismatches the expected width.
-        _ => Err(VerificationError::InvalidProofShape),
+    if preprocessed_width > 0 {
+        assert_eq!(is_zk, 0); // TODO: preprocessed columns not supported in zk mode
+        let height = preprocessed.as_ref().unwrap().values.len() / preprocessed_width;
+        assert_eq!(
+            height,
+            trace_domain.size(),
+            "Verifier's preprocessed trace height must be equal to trace domain size"
+        );
+        let (preprocessed_commit, _) = debug_span!("process preprocessed trace")
+            .in_scope(|| pcs.commit([(trace_domain, preprocessed.unwrap())]));
+        Ok((preprocessed_width, Some(preprocessed_commit)))
+    } else {
+        Ok((preprocessed_width, None))
     }
 }
 
@@ -195,61 +215,46 @@ pub fn verify<SC, A>(
     air: &A,
     proof: &Proof<SC>,
     public_values: &[Val<SC>],
+    var_length_public_inputs: &[&[&[Val<SC>]]],
 ) -> Result<(), VerificationError<PcsError<SC>>>
 where
-    SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
-{
-    verify_with_preprocessed(config, air, proof, public_values, None)
-}
-
-#[instrument(skip_all)]
-pub fn verify_with_preprocessed<SC, A>(
-    config: &SC,
-    air: &A,
-    proof: &Proof<SC>,
-    public_values: &[Val<SC>],
-    preprocessed_vk: Option<&PreprocessedVerifierKey<SC>>,
-) -> Result<(), VerificationError<PcsError<SC>>>
-where
-    SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    SC: StarkGenericConfig + Sync,
+    A: EonAir<Val<SC>, SC::Challenge>,
+    Val<SC>: TwoAdicField,
 {
     let Proof {
         commitments,
         opened_values,
         opening_proof,
+        aux_finals,
         degree_bits,
     } = proof;
 
     let pcs = config.pcs();
     let degree = 1 << degree_bits;
+    let aux_width = air.aux_width();
+    let num_randomness = air.num_randomness();
+
     let trace_domain = pcs.natural_domain_for_degree(degree);
     // TODO: allow moving preprocessed commitment to preprocess time, if known in advance
     let (preprocessed_width, preprocessed_commit) =
-        process_preprocessed_trace::<SC, A>(air, opened_values, config.is_zk(), preprocessed_vk)?;
+        process_preprocessed_trace::<SC, _>(air, opened_values, pcs, trace_domain, config.is_zk())?;
 
-    // Ensure the preprocessed trace and main trace have the same height.
-    if let Some(vk) = preprocessed_vk
-        && preprocessed_width > 0
-        && vk.degree_bits != *degree_bits
-    {
-        return Err(VerificationError::InvalidProofShape);
-    }
-
-    let log_num_quotient_chunks = get_log_num_quotient_chunks::<Val<SC>, A>(
+    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, SC::Challenge, _>(
         air,
         preprocessed_width,
         public_values.len(),
         config.is_zk(),
+        aux_width,
+        num_randomness,
     );
-    let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
+    let quotient_degree = 1 << (log_quotient_degree + config.is_zk());
     let mut challenger = config.initialise_challenger();
     let init_trace_domain = pcs.natural_domain_for_degree(degree >> (config.is_zk()));
 
     let quotient_domain =
-        trace_domain.create_disjoint_domain(1 << (degree_bits + log_num_quotient_chunks));
-    let quotient_chunks_domains = quotient_domain.split_domains(num_quotient_chunks);
+        trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
+    let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
 
     let randomized_quotient_chunks_domains = quotient_chunks_domains
         .iter()
@@ -264,20 +269,6 @@ where
         return Err(VerificationError::RandomizationError);
     }
 
-    let air_width = A::width(air);
-    let valid_shape = opened_values.trace_local.len() == air_width
-        && opened_values.trace_next.len() == air_width
-        && opened_values.quotient_chunks.len() == num_quotient_chunks
-        && opened_values
-            .quotient_chunks
-            .iter()
-            .all(|qc| qc.len() == SC::Challenge::DIMENSION)
-        // We've already checked that opened_values.random is present if and only if ZK is enabled.
-        && opened_values.random.as_ref().is_none_or(|r_comm| r_comm.len() == SC::Challenge::DIMENSION);
-    if !valid_shape {
-        return Err(VerificationError::InvalidProofShape);
-    }
-
     // Observe the instance.
     challenger.observe(Val::<SC>::from_usize(proof.degree_bits));
     challenger.observe(Val::<SC>::from_usize(proof.degree_bits - config.is_zk()));
@@ -287,17 +278,76 @@ where
     // Practically speaking though, the only related known attack is from failing to include public
     // values. It's not clear if failing to include other instance data could enable a transcript
     // collision, since most such changes would completely change the set of satisfying witnesses.
+
     challenger.observe(commitments.trace.clone());
     if preprocessed_width > 0 {
         challenger.observe(preprocessed_commit.as_ref().unwrap().clone());
     }
     challenger.observe_slice(public_values);
 
+    // begin processing aux trace (optional)
+    let num_randomness = air.num_randomness();
+
+    let air_width = air.width();
+    let bus_types = air.bus_types();
+    let valid_shape = opened_values.trace_local.len() == air_width
+        && opened_values.trace_next.len() == air_width
+        && opened_values.quotient_chunks.len() == quotient_degree
+        && opened_values
+            .quotient_chunks
+            .iter()
+            .all(|qc| qc.len() == SC::Challenge::DIMENSION)
+        // We've already checked that opened_values.random is present if and only if ZK is enabled.
+        && opened_values.random.as_ref().is_none_or(|r_comm| r_comm.len() == SC::Challenge::DIMENSION)
+        // Check aux trace shape
+        && if num_randomness > 0 {
+            let aux_width_base = aux_width * SC::Challenge::DIMENSION;
+            // Note: bus_types length is not matched against aux_width, to allow for more generic aux traces.
+            match (&opened_values.aux_trace_local, &opened_values.aux_trace_next, aux_finals) {
+                (Some(l), Some(n), Some(f)) => l.len() == aux_width_base
+                    && n.len() == aux_width_base
+                    && f.len() == aux_width,
+                _ => false,
+            }
+        } else {
+            opened_values.aux_trace_local.is_none() && opened_values.aux_trace_next.is_none() && aux_finals.is_none()
+        };
+    if !valid_shape {
+        return Err(VerificationError::InvalidProofShape);
+    }
+    let randomness = if num_randomness != 0 {
+        let randomness: Vec<SC::Challenge> = (0..num_randomness)
+            .map(|_| challenger.sample_algebra_element())
+            .collect();
+
+        if let Some(aux_commit) = &commitments.aux {
+            challenger.observe(aux_commit.clone());
+        } else {
+            return Err(VerificationError::InvalidProofShape);
+        }
+        if let Some(aux_finals) = &aux_finals {
+            for aux_final in aux_finals {
+                challenger.observe_algebra_element(*aux_final);
+            }
+        } else {
+            return Err(VerificationError::InvalidProofShape);
+        }
+
+        randomness
+    } else {
+        // No aux trace expected
+        if commitments.aux.is_some() {
+            return Err(VerificationError::InvalidProofShape);
+        }
+        vec![]
+    };
+
     // Get the first Fiat Shamir challenge which will be used to combine all constraint polynomials
     // into a single polynomial.
     //
     // Soundness Error: n/|EF| where n is the number of constraints.
     let alpha = challenger.sample_algebra_element();
+
     challenger.observe(commitments.quotient_chunks.clone());
 
     // We've already checked that commitments.random is present if and only if ZK is enabled.
@@ -351,15 +401,43 @@ where
         ),
     ]);
 
+    // Add aux trace verification if present
+    if let Some(aux_commit) = &commitments.aux {
+        let aux_local = opened_values
+            .aux_trace_local
+            .as_ref()
+            .ok_or(VerificationError::InvalidProofShape)?;
+        let aux_next = opened_values
+            .aux_trace_next
+            .as_ref()
+            .ok_or(VerificationError::InvalidProofShape)?;
+        coms_to_verify.push((
+            aux_commit.clone(),
+            vec![(
+                trace_domain,
+                vec![(zeta, aux_local.clone()), (zeta_next, aux_next.clone())],
+            )],
+        ));
+    }
+
     // Add preprocessed commitment verification if present
     if preprocessed_width > 0 {
+        let preprocessed_local = opened_values
+            .preprocessed_local
+            .as_ref()
+            .ok_or(VerificationError::InvalidProofShape)?;
+        let preprocessed_next = opened_values
+            .preprocessed_next
+            .as_ref()
+            .ok_or(VerificationError::InvalidProofShape)?;
+
         coms_to_verify.push((
             preprocessed_commit.unwrap(),
             vec![(
                 trace_domain,
                 vec![
-                    (zeta, opened_values.preprocessed_local.clone().unwrap()),
-                    (zeta_next, opened_values.preprocessed_next.clone().unwrap()),
+                    (zeta, preprocessed_local.clone()),
+                    (zeta_next, preprocessed_next.clone()),
                 ],
             )],
         ));
@@ -374,12 +452,42 @@ where
         zeta,
     );
 
-    verify_constraints::<SC, A, PcsError<SC>>(
+    // Verify the aux trace final values match the expected values if the aux trace contains buses (one bus per aux column)
+    // Note: if no buses are defined (bus_types.is_empty), the boundary values of the aux_trace are not checked against the provided variable-length public inputs.
+    for (idx, (bus_type, aux_final)) in bus_types
+        .iter()
+        .zip(aux_finals.as_ref().unwrap_or(&vec![]))
+        .enumerate()
+    {
+        let public_inputs_for_bus = *var_length_public_inputs
+            .get(idx)
+            .ok_or(VerificationError::InvalidProofShape)?;
+        let expected_final = match bus_type {
+            BusType::Multiset => bus_multiset_boundary_varlen::<_, SC>(
+                &randomness,
+                public_inputs_for_bus.iter().copied(),
+            ),
+            BusType::Logup => bus_logup_boundary_varlen::<_, SC>(
+                &randomness,
+                public_inputs_for_bus.iter().copied(),
+            ),
+        };
+
+        if *aux_final != expected_final {
+            return Err(VerificationError::InvalidBusBoundaryValues);
+        }
+    }
+
+    verify_constraints::<SC, _, PcsError<SC>>(
         air,
         &opened_values.trace_local,
         &opened_values.trace_next,
         opened_values.preprocessed_local.as_deref(),
         opened_values.preprocessed_next.as_deref(),
+        opened_values.aux_trace_local.as_deref(),
+        opened_values.aux_trace_next.as_deref(),
+        &randomness,
+        aux_finals.as_ref().unwrap_or(&vec![]),
         public_values,
         init_trace_domain,
         zeta,
@@ -390,26 +498,63 @@ where
     Ok(())
 }
 
-#[derive(Debug, Error)]
-pub enum VerificationError<PcsErr>
-where
-    PcsErr: core::fmt::Debug,
-{
-    #[error("invalid proof shape")]
+/// Computes the final value for a multiset bus given variable-length public inputs.
+pub fn bus_multiset_boundary_varlen<
+    'a,
+    I: IntoIterator<Item = &'a [Val<SC>]>,
+    SC: StarkGenericConfig,
+>(
+    randomness: &[SC::Challenge],
+    public_inputs: I,
+) -> SC::Challenge {
+    let mut bus_p_last = SC::Challenge::ONE;
+    let rand = randomness;
+    for row in public_inputs {
+        let mut p_last = rand[0];
+        for (c, p_i) in row.iter().enumerate() {
+            p_last += SC::Challenge::from(*p_i) * rand[c + 1];
+        }
+        bus_p_last *= p_last;
+    }
+    bus_p_last
+}
+
+/// Computes the final value for a logup bus boundary constraint given variable-length public inputs.
+pub fn bus_logup_boundary_varlen<
+    'a,
+    I: IntoIterator<Item = &'a [Val<SC>]>,
+    SC: StarkGenericConfig,
+>(
+    randomness: &[SC::Challenge],
+    public_inputs: I,
+) -> SC::Challenge {
+    let mut bus_q_last = SC::Challenge::ZERO;
+    let rand = randomness;
+    for row in public_inputs {
+        let mut q_last = rand[0];
+        for (c, p_i) in row.iter().enumerate() {
+            let p_i = *p_i;
+            q_last += SC::Challenge::from(p_i) * rand[c + 1];
+        }
+        bus_q_last += q_last.inverse();
+    }
+    bus_q_last
+}
+
+#[derive(Debug)]
+pub enum VerificationError<PcsErr> {
     InvalidProofShape,
     /// An error occurred while verifying the claimed openings.
-    #[error("invalid opening argument: {0:?}")]
     InvalidOpeningArgument(PcsErr),
     /// Out-of-domain evaluation mismatch, i.e. `constraints(zeta)` did not match
     /// `quotient(zeta) Z_H(zeta)`.
-    #[error("out-of-domain evaluation mismatch{}", .index.map(|i| format!(" at index {}", i)).unwrap_or_default())]
-    OodEvaluationMismatch { index: Option<usize> },
+    OodEvaluationMismatch {
+        index: Option<usize>,
+    },
     /// The FRI batch randomization does not correspond to the ZK setting.
-    #[error("randomization error: FRI batch randomization does not match ZK setting")]
     RandomizationError,
     /// The domain does not support computing the next point algebraically.
-    #[error(
-        "next point unavailable: domain does not support computing the next point algebraically"
-    )]
     NextPointUnavailable,
+    /// The expected bus boundary final values do not match the opened values.
+    InvalidBusBoundaryValues,
 }
