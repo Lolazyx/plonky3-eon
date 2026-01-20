@@ -1,27 +1,24 @@
 use core::borrow::Borrow;
 
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
+use eon_air::{EonAir, EonAirBuilder, impl_p3_air_traits};
+use eon_uni_stark::{StarkConfig, prove, verify};
 use p3_bn254::{Fr, Poseidon2Bn254};
 use p3_challenger::DuplexChallenger;
-use p3_field::PrimeCharacteristicRing;
+use p3_field::{ExtensionField, Field, PrimeCharacteristicRing};
 use p3_kzg::KzgPcs;
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
-use p3_uni_stark::{StarkConfig, prove, verify};
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
 /// For testing the public values feature
 pub struct FibonacciAir {}
 
-impl<F> BaseAir<F> for FibonacciAir {
+impl<F: Field, EF: ExtensionField<F>> EonAir<F, EF> for FibonacciAir {
     fn width(&self) -> usize {
         NUM_FIBONACCI_COLS
     }
-}
-
-impl<AB: AirBuilderWithPublicValues> Air<AB> for FibonacciAir {
-    fn eval(&self, builder: &mut AB) {
+    fn eval<AB: EonAirBuilder<F = F, EF = EF>>(&self, builder: &mut AB) {
         let main = builder.main();
 
         let pis = builder.public_values();
@@ -109,6 +106,8 @@ type Challenger = DuplexChallenger<Val, Perm, 3, 2>;
 type Pcs = KzgPcs;
 type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
 
+impl_p3_air_traits!(FibonacciAir, base = Fr, challenge = Fr);
+
 /// n-th Fibonacci number expected to be x
 fn test_public_value_impl(n: usize, x: u64, _log_final_poly_len: usize) {
     let mut rng = SmallRng::seed_from_u64(1);
@@ -120,8 +119,9 @@ fn test_public_value_impl(n: usize, x: u64, _log_final_poly_len: usize) {
     let config = MyConfig::new(pcs, challenger);
     let pis = vec![Fr::ZERO, Fr::ONE, Fr::from_u64(x)];
 
-    let proof = prove(&config, &FibonacciAir {}, trace, &pis);
-    verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
+    let mut air = FibonacciAir {};
+    let proof = prove(&config, &mut air, trace, &pis);
+    verify(&config, &mut air, &proof, &pis).expect("verification failed");
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn test_public_value() {
 
 #[cfg(debug_assertions)]
 #[test]
-#[should_panic(expected = "assertion `left == right` failed: constraints had nonzero value")]
+#[should_panic(expected = "Constraint failed at row")]
 fn test_incorrect_public_value() {
     let mut rng = SmallRng::seed_from_u64(1);
     let perm = Perm::new_from_rng(4, 22, &mut rng);
@@ -150,5 +150,6 @@ fn test_incorrect_public_value() {
         Fr::ONE,
         Fr::from_u64(123_123), // incorrect result
     ];
-    prove(&config, &FibonacciAir {}, trace, &pis);
+    let mut air = FibonacciAir {};
+    prove(&config, &mut air, trace, &pis);
 }

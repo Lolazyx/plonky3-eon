@@ -8,13 +8,16 @@ use p3_air::Air;
 use p3_challenger::{CanObserve, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing};
+use p3_lookup::logup::LogUpGadget;
+use p3_lookup::lookup_traits::AirLookupHandler;
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
+use p3_matrix::stack::ViewPair;
 use p3_util::zip_eq::zip_eq;
 use thiserror::Error;
 use tracing::instrument;
 
-use crate::symbolic_builder::{SymbolicAirBuilder, get_log_num_quotient_chunks};
+use crate::symbolic_builder::{SymbolicAirBuilder, get_log_quotient_degree_no_lookup};
 use crate::{
     Domain, PcsError, PreprocessedVerifierKey, Proof, StarkGenericConfig, Val,
     VerifierConstraintFolder,
@@ -103,8 +106,18 @@ where
         _ => None,
     };
 
+    // placeholder
+    let empty_row: &[SC::Challenge] = &[];
+    let permutation = ViewPair::new(
+        RowMajorMatrixView::new_row(empty_row),
+        RowMajorMatrixView::new_row(empty_row),
+    );
+    let permutation_challenges: &[SC::Challenge] = &[];
+
     let mut folder = VerifierConstraintFolder {
         main,
+        permutation,
+        permutation_challenges,
         preprocessed,
         public_values,
         is_first_row: sels.is_first_row,
@@ -192,7 +205,7 @@ where
 #[instrument(skip_all)]
 pub fn verify<SC, A>(
     config: &SC,
-    air: &A,
+    air: &mut A,
     proof: &Proof<SC>,
     public_values: &[Val<SC>],
 ) -> Result<(), VerificationError<PcsError<SC>>>
@@ -206,7 +219,7 @@ where
 #[instrument(skip_all)]
 pub fn verify_with_preprocessed<SC, A>(
     config: &SC,
-    air: &A,
+    air: &mut A,
     proof: &Proof<SC>,
     public_values: &[Val<SC>],
     preprocessed_vk: Option<&PreprocessedVerifierKey<SC>>,
@@ -237,18 +250,29 @@ where
         return Err(VerificationError::InvalidProofShape);
     }
 
-    let log_num_quotient_chunks = get_log_num_quotient_chunks::<Val<SC>, A>(
+    // let log_num_quotient_chunks = get_log_num_quotient_chunks::<Val<SC>, A>(
+    //     air,
+    //     preprocessed_width,
+    //     public_values.len(),
+    //     config.is_zk(),
+    // );
+    // let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
+
+    let log_quotient_degree = get_log_quotient_degree_no_lookup::<Val<SC>, A>(
         air,
         preprocessed_width,
         public_values.len(),
         config.is_zk(),
     );
-    let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
+    let num_quotient_chunks = 1 << (log_quotient_degree + config.is_zk());
+
     let mut challenger = config.initialise_challenger();
     let init_trace_domain = pcs.natural_domain_for_degree(degree >> (config.is_zk()));
 
+    // let quotient_domain =
+    //     trace_domain.create_disjoint_domain(1 << (degree_bits + log_num_quotient_chunks));
     let quotient_domain =
-        trace_domain.create_disjoint_domain(1 << (degree_bits + log_num_quotient_chunks));
+        trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
     let quotient_chunks_domains = quotient_domain.split_domains(num_quotient_chunks);
 
     let randomized_quotient_chunks_domains = quotient_chunks_domains

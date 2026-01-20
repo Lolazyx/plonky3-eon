@@ -4,7 +4,6 @@
 
 extern crate alloc;
 
-mod api;
 mod check_constraints;
 mod config;
 mod folder;

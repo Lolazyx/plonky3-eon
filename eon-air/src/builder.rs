@@ -72,7 +72,8 @@ pub trait EonAirBuilder: Sized {
     // type EF: Field + Sync;
 
     /// Expression type over extension field elements.
-    type ExprEF: Algebra<Self::Expr> + Algebra<Self::EF> + From<Self::F>;
+    // type ExprEF: Algebra<Self::Expr> + Algebra<Self::EF> + From<Self::F>;
+    type ExprEF: Algebra<Self::Expr> + Algebra<Self::EF>;
 
     /// Variable type over extension field elements.
     type VarEF: Into<Self::ExprEF> + Copy + Send + Sync;

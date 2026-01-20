@@ -8,6 +8,7 @@ use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{BasedVectorSpace, PackedValue, PrimeCharacteristicRing};
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
+use p3_matrix::dense::RowMajorMatrixView;
 use p3_maybe_rayon::prelude::*;
 use p3_util::log2_strict_usize;
 use tracing::{debug_span, info_span, instrument};
@@ -15,18 +16,18 @@ use tracing::{debug_span, info_span, instrument};
 use crate::{
     Commitments, Domain, OpenedValues, PackedChallenge, PackedVal, PreprocessedProverData, Proof,
     ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, Val,
-    get_log_num_quotient_chunks, get_symbolic_constraints,
+    get_log_quotient_degree_no_lookup, get_symbolic_constraints_no_lookup,
 };
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
 pub fn prove_with_preprocessed<
     SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>>>,
+    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
     #[cfg(not(debug_assertions))] A,
 >(
     config: &SC,
-    air: &A,
+    air: &mut A,
     trace: RowMajorMatrix<Val<SC>>,
     public_values: &[Val<SC>],
     preprocessed: Option<&PreprocessedProverData<SC>>,
@@ -36,7 +37,7 @@ where
     A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
 {
     #[cfg(debug_assertions)]
-    crate::check_constraints::check_constraints(air, &trace, public_values);
+    crate::check_constraints::check_constraints_without_lookups(air, &trace, public_values);
 
     // Compute the height `N = 2^n` and `log_2(height)`, `n`, of the trace.
     let degree = trace.height();
@@ -80,8 +81,13 @@ where
     );
 
     // Compute the constraint polynomials as vectors of symbolic expressions.
-    let symbolic_constraints =
-        get_symbolic_constraints(air, preprocessed_width, public_values.len());
+    // let symbolic_constraints =
+    //     get_symbolic_constraints(air, preprocessed_width, public_values.len(), 0, 0);
+    let symbolic_constraints = get_symbolic_constraints_no_lookup::<Val<SC>, A>(
+        air,
+        preprocessed_width,
+        public_values.len(),
+    );
 
     // Count the number of constraints that we have.
     let constraint_count = symbolic_constraints.len();
@@ -119,14 +125,21 @@ where
     // From the degree of the constraint polynomial, compute the number
     // of quotient polynomials we will split Q(x) into. This is chosen to
     // always be a power of 2.
-    let log_num_quotient_chunks = get_log_num_quotient_chunks::<Val<SC>, A>(
+    // let log_num_quotient_chunks = get_log_num_quotient_chunks::<Val<SC>, A>(
+    //     air,
+    //     preprocessed_width,
+    //     public_values.len(),
+    //     config.is_zk(),
+    // );
+    let log_quotient_degree = get_log_quotient_degree_no_lookup::<Val<SC>, A>(
         air,
         preprocessed_width,
         public_values.len(),
         config.is_zk(),
     );
 
-    let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
+    // let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
+    let num_quotient_chunks = 1 << (log_quotient_degree + config.is_zk());
 
     // Initialize the PCS and the Challenger.
     let pcs = config.pcs();
@@ -199,8 +212,10 @@ where
     // A domain large enough to uniquely identify the quotient polynomial.
     // This domain must be contained in the domain over which `trace_data` is defined.
     // Explicitly it should be equal to `gK` for some subgroup `K` contained in `H'`.
+    // let quotient_domain =
+    //     ext_trace_domain.create_disjoint_domain(1 << (log_ext_degree + log_num_quotient_chunks));
     let quotient_domain =
-        ext_trace_domain.create_disjoint_domain(1 << (log_ext_degree + log_num_quotient_chunks));
+        ext_trace_domain.create_disjoint_domain(1 << (log_ext_degree + log_quotient_degree));
 
     // Return a the subset of the extended trace `ET` corresponding to the rows giving evaluations
     // over the quotient domain.
@@ -358,11 +373,11 @@ where
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
 pub fn prove<
     SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>>>,
+    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
     #[cfg(not(debug_assertions))] A,
 >(
     config: &SC,
-    air: &A,
+    air: &mut A,
     trace: RowMajorMatrix<Val<SC>>,
     public_values: &[Val<SC>],
 ) -> Proof<SC>
@@ -445,8 +460,19 @@ where
             });
 
             let accumulator = PackedChallenge::<SC>::ZERO;
+
+            // placeholder
+            let perm_mat_opt: Option<RowMajorMatrix<PackedChallenge<SC>>> = None;
+            let permutation: RowMajorMatrixView<'_, PackedChallenge<SC>> = perm_mat_opt
+                .as_ref()
+                .map(|m| m.as_view())
+                .unwrap_or_else(|| RowMajorMatrixView::new_row(&[]));
+            let permutation_challenges: Vec<PackedChallenge<SC>> = Vec::new();
+
             let mut folder = ProverConstraintFolder {
                 main: main.as_view(),
+                permutation,
+                permutation_challenges,
                 preprocessed: preprocessed.as_ref().map(|m| m.as_view()),
                 public_values,
                 is_first_row,

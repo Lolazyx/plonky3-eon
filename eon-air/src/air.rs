@@ -136,6 +136,10 @@ pub trait EonAir<F: Field, EF>: Sync {
 /// ```
 #[macro_export]
 macro_rules! impl_p3_air_traits {
+    // ============================================================
+    // EF is extension field of F (e.g. BinomialExtensionField<F, 2>)
+    // # Usage: impl_p3_air_traits!(MyAir, BinomialExtensionField<F, 2>);
+    // ============================================================
     ($air_type:ty, $ef_type:ty) => {
         impl<F: $crate::Field> $crate::BaseAir<F> for $air_type
         where
@@ -193,11 +197,83 @@ macro_rules! impl_p3_air_traits {
 
         impl<AB> $crate::Air<AB> for $air_type
         where
-            AB: $crate::EonAirBuilder + $crate::AirBuilder,
+            AB: $crate::EonAirBuilder + $crate::AirBuilder<F = <AB as $crate::EonAirBuilder>::F>,
         {
 
             fn eval(&self, builder: &mut AB) {
                 <Self as $crate::EonAir<<AB as $crate::EonAirBuilder>::F, AB::EF>>::eval(self, builder)
+            }
+        }
+    };
+
+    // ============================================================
+    // fixed base field + challenge field（e.g. base=Fr, challenge=Fr）
+    // # Usage: impl_p3_air_traits!(MyAir, base = Fr, challenge = Fr);
+    // ============================================================
+    ($air_type:ty, base = $F:ty, challenge = $EF:ty $(,)?) => {
+        // ---- BaseAir<F> ----
+        impl p3_air::BaseAir<$F> for $air_type
+        where
+            $air_type: $crate::EonAir<$F, $EF>,
+        {
+            fn width(&self) -> usize {
+                <$air_type as $crate::EonAir<$F, $EF>>::width(self)
+            }
+
+            fn preprocessed_trace(
+                &self,
+            ) -> Option<p3_matrix::dense::RowMajorMatrix<$F>> {
+                <$air_type as $crate::EonAir<$F, $EF>>::preprocessed_trace(self)
+            }
+        }
+
+        // ---- BaseAirWithPublicValues<F> ----
+        impl p3_air::BaseAirWithPublicValues<$F> for $air_type
+        where
+            $air_type: $crate::EonAir<$F, $EF>,
+        {
+            fn num_public_values(&self) -> usize {
+                <$air_type as $crate::EonAir<$F, $EF>>::num_public_values(self)
+            }
+        }
+
+
+        // ---- Bridge into Plonky3 lookup handler ----
+        impl<AB> p3_lookup::lookup_traits::AirLookupHandler<AB> for $air_type
+        where
+            $air_type: $crate::EonAir<$F, $EF>,
+            AB: p3_air::AirBuilder<F = $F>
+                + $crate::EonAirBuilder<F = $F, EF = $EF>
+                + p3_air::AirBuilderWithPublicValues
+                + p3_air::PairBuilder
+                + p3_air::PermutationAirBuilder,
+        {
+            fn add_lookup_columns(&mut self) -> Vec<usize> {
+                <$air_type as $crate::EonAir<$F, $EF>>::add_lookup_columns(self)
+            }
+
+            fn get_lookups(&mut self) -> Vec<p3_lookup::lookup_traits::Lookup<$F>> {
+                <$air_type as $crate::EonAir<$F, $EF>>::get_lookups(self)
+            }
+
+            fn register_lookup(
+                &mut self,
+                kind: p3_lookup::lookup_traits::Kind,
+                lookup_inputs: &[p3_lookup::lookup_traits::LookupInput<$F>],
+            ) -> p3_lookup::lookup_traits::Lookup<$F> {
+                <$air_type as $crate::EonAir<$F, $EF>>::register_lookup(self, kind, lookup_inputs)
+            }
+        }
+
+        // ---- Air<AB> ----
+        impl<AB> p3_air::Air<AB> for $air_type
+        where
+            $air_type: $crate::EonAir<$F, $EF> + p3_air::BaseAir<$F>,
+            AB: p3_air::AirBuilder<F = $F>
+                + $crate::EonAirBuilder<F = $F, EF = $EF>,
+        {
+            fn eval(&self, builder: &mut AB) {
+                <$air_type as $crate::EonAir<$F, $EF>>::eval(self, builder)
             }
         }
     };
