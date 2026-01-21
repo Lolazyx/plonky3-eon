@@ -74,7 +74,7 @@ where
 /// This evaluates the [`Air`] constraints at the out-of-domain point and checks
 /// that constraints(zeta) / Z_H(zeta) = quotient(zeta).
 #[allow(clippy::too_many_arguments)]
-pub fn verify_constraints<SC, A, PcsErr>(
+pub fn verify_constraints<SC, A, PcsErr, LG>(
     air: &A,
     trace_local: &[SC::Challenge],
     trace_next: &[SC::Challenge],
@@ -88,10 +88,14 @@ pub fn verify_constraints<SC, A, PcsErr>(
     zeta: SC::Challenge,
     alpha: SC::Challenge,
     quotient: SC::Challenge,
+    lookup_gadget: &LG,
+    lookups: &[p3_lookup::lookup_traits::Lookup<Val<SC>>],
+    lookup_data: Option<&[p3_lookup::lookup_traits::LookupData<SC::Challenge>]>,
 ) -> Result<(), VerificationError<PcsErr>>
 where
     SC: StarkGenericConfig,
-    A: for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    LG: LookupGadget,
+    A: for<'a> p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
     PcsErr: core::fmt::Debug,
 {
     let sels = trace_domain.selectors_at_point(zeta);
@@ -135,7 +139,16 @@ where
         alpha,
         accumulator: SC::Challenge::ZERO,
     };
-    air.eval(&mut folder);
+    // air.eval(&mut folder);
+    let lookup_data = lookup_data.unwrap_or(&[]);
+    <A as p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'_, SC>>>::eval::<LG>(
+        air,
+        &mut folder,
+        lookups,
+        lookup_data,
+        lookup_gadget,
+    );
+
     let folded_constraints = folder.accumulator;
 
     // Check that constraints(zeta) / Z_H(zeta) = quotient(zeta)
@@ -278,7 +291,7 @@ where
         );
 
     let permutation_width = lookups.len() * lookup_gadget.num_aux_cols();
-    let num_randomness = permutation_width * lookup_gadget.num_challenges();
+    let num_randomness = lookups.len() * lookup_gadget.num_challenges();
 
     let log_quotient_degree = get_log_quotient_degree::<Val<SC>, SC::Challenge, _>(
         air,
@@ -466,7 +479,7 @@ where
         zeta,
     );
 
-    verify_constraints::<SC, A, PcsError<SC>>(
+    verify_constraints(
         air,
         &opened_values.trace_local,
         &opened_values.trace_next,
@@ -480,6 +493,9 @@ where
         zeta,
         alpha,
         quotient,
+        &lookup_gadget,
+        &lookups,
+        None,
     )?;
 
     Ok(())

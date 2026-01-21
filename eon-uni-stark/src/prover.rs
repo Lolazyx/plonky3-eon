@@ -319,6 +319,9 @@ where
     // where `deg(C) = 3`. (See the discussion above constraint_degree for more details.)
     let quotient_values = quotient_values(
         air,
+        &lookup_gadget,
+        &lookups,
+        &lookup_data,
         public_values,
         &permutation_challenges,
         trace_domain,
@@ -524,8 +527,11 @@ where
 #[instrument(skip_all)]
 // TODO: Group some arguments to remove the `allow`?
 #[allow(clippy::too_many_arguments)]
-pub fn quotient_values<SC, A, Mat, PermMat>(
+pub fn quotient_values<SC, A, Mat, PermMat, LG>(
     air: &A,
+    lookup_gadget: &LG,
+    lookups: &[p3_lookup::lookup_traits::Lookup<Val<SC>>],
+    lookup_data: &[p3_lookup::lookup_traits::LookupData<SC::Challenge>],
     public_values: &[Val<SC>],
     perm_challenges: &[SC::Challenge],
     trace_domain: Domain<SC>,
@@ -538,7 +544,8 @@ pub fn quotient_values<SC, A, Mat, PermMat>(
 ) -> Vec<SC::Challenge>
 where
     SC: StarkGenericConfig,
-    A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
+    LG: LookupGadget,
+    for<'a> A: p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'a, SC>>,
     Mat: Matrix<Val<SC>> + Sync,
     PermMat: Matrix<Val<SC>> + Sync,
 {
@@ -672,10 +679,19 @@ where
                 accumulator,
                 constraint_index: 0,
             };
-            air.eval(&mut folder);
+            // air.eval(&mut folder);
+           <A as p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'_, SC>>>::eval(
+                air,
+                &mut folder,
+                lookups,
+                lookup_data,
+                lookup_gadget,
+            );
+
+
 
             // quotient(x) = constraints(x) / Z_H(x)
-            let quotient = folder.accumulator * inv_vanishing;
+            let quotient: PackedChallenge<SC> = folder.accumulator * inv_vanishing;
 
             // "Transpose" D packed base coefficients into WIDTH scalar extension coefficients.
             (0..core::cmp::min(quotient_size, PackedVal::<SC>::WIDTH)).map(move |idx_in_packing| {
