@@ -19,15 +19,15 @@ use tracing::{debug_span, info_span, instrument};
 
 use crate::{
     Commitments, Domain, OpenedValues, PackedChallenge, PackedVal, PreprocessedProverData, Proof,
-    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, Val, get_log_quotient_degree,
-    get_symbolic_constraints,
+    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, Val, check_constraints,
+    get_log_quotient_degree, get_symbolic_constraints,
 };
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
 pub fn prove_with_preprocessed<
     SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
+    #[cfg(debug_assertions)] A: for<'a> Air<check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
     #[cfg(not(debug_assertions))] A,
 >(
     config: &SC,
@@ -39,12 +39,10 @@ pub fn prove_with_preprocessed<
 where
     SC: StarkGenericConfig,
     A: eon_air::EonAir<Val<SC>, SC::Challenge>
-        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'a, SC>>,
+        + AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> AirLookupHandler<ProverConstraintFolder<'a, SC>>,
 {
     #[cfg(debug_assertions)]
-    crate::check_constraints::check_constraints_without_lookups(air, &trace, public_values);
-
     // Compute the height `N = 2^n` and `log_2(height)`, `n`, of the trace.
     let degree = trace.height();
     let log_degree = log2_strict_usize(degree);
@@ -89,10 +87,7 @@ where
     );
 
     let lookup_gadget = LogUpGadget;
-    let lookups =
-        <A as p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>>::get_lookups(
-            air,
-        );
+    let lookups = <A as AirLookupHandler<SymbolicAirBuilder<Val<SC>>>>::get_lookups(air);
 
     let permutation_width = lookups.len() * lookup_gadget.num_aux_cols();
     let num_randomness = lookups.len() * lookup_gadget.num_challenges();
@@ -212,7 +207,7 @@ where
     challenger.observe_slice(public_values);
 
     // --- [LOOKUP] sample permutation challenges + build permutation trace ---
-    let (permutation_challenges, permutation_trace, mut lookup_data) = if has_lookups {
+    let (permutation_challenges, permutation_trace, lookup_data) = if has_lookups {
         // 1) sample permutation challenges (extension-field challenges)
         //    Count must match: lookups.len() * num_challenges()
         let permutation_challenges: Vec<SC::Challenge> = (0..num_randomness)
@@ -227,15 +222,13 @@ where
             <A as p3_air::BaseAir<Val<SC>>>::preprocessed_trace(&*air)
         };
 
-        let preprocessed_view = preprocessed_matrix.as_ref().map(|m| m.as_view());
-
         // 3) prepare lookup_data (only meaningful for GLOBAL lookups; otherwise can be empty)
         let num_global = lookups
             .iter()
             .filter(|l| matches!(l.kind, Kind::Global(_)))
             .count();
 
-        let mut lookup_data: Vec<p3_lookup::lookup_traits::LookupData<SC::Challenge>> =
+        let mut lookup_data: Vec<LookupData<SC::Challenge>> =
             vec![LookupData::<SC::Challenge>::default(); num_global];
 
         // 4) IMPORTANT: generate_permutation needs the *base-field* main trace
@@ -507,7 +500,7 @@ where
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
 pub fn prove<
     SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
+    #[cfg(debug_assertions)] A: for<'a> Air<check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
     #[cfg(not(debug_assertions))] A,
 >(
     config: &SC,
@@ -518,8 +511,8 @@ pub fn prove<
 where
     SC: StarkGenericConfig,
     A: eon_air::EonAir<Val<SC>, SC::Challenge>
-        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'a, SC>>,
+        + AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> AirLookupHandler<ProverConstraintFolder<'a, SC>>,
 {
     prove_with_preprocessed::<SC, A>(config, air, trace, public_values, None)
 }
@@ -530,8 +523,8 @@ where
 pub fn quotient_values<SC, A, Mat, PermMat, LG>(
     air: &A,
     lookup_gadget: &LG,
-    lookups: &[p3_lookup::lookup_traits::Lookup<Val<SC>>],
-    lookup_data: &[p3_lookup::lookup_traits::LookupData<SC::Challenge>],
+    lookups: &[Lookup<Val<SC>>],
+    lookup_data: &[LookupData<SC::Challenge>],
     public_values: &[Val<SC>],
     perm_challenges: &[SC::Challenge],
     trace_domain: Domain<SC>,
@@ -545,7 +538,7 @@ pub fn quotient_values<SC, A, Mat, PermMat, LG>(
 where
     SC: StarkGenericConfig,
     LG: LookupGadget,
-    for<'a> A: p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'a, SC>>,
+    for<'a> A: AirLookupHandler<ProverConstraintFolder<'a, SC>>,
     Mat: Matrix<Val<SC>> + Sync,
     PermMat: Matrix<Val<SC>> + Sync,
 {
@@ -606,7 +599,6 @@ where
 
             let d = <SC::Challenge as BasedVectorSpace<Val<SC>>>::DIMENSION;
 
-            // 1) permutation challenges：SC::Challenge -> PackedChallenge
             let permutation_challenges: Vec<PackedChallenge<SC>> = perm_challenges
                 .iter()
                 .map(|ch| {
@@ -617,7 +609,6 @@ where
                 })
                 .collect();
 
-            // 2) permutation matrix：从 base-field “flatten” 形态重组回 PackedChallenge
             let mut perm_mat_opt: Option<RowMajorMatrix<PackedChallenge<SC>>> = None;
 
             let permutation: RowMajorMatrixView<'_, PackedChallenge<SC>> =
@@ -680,7 +671,7 @@ where
                 constraint_index: 0,
             };
             // air.eval(&mut folder);
-           <A as p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'_, SC>>>::eval(
+           <A as AirLookupHandler<ProverConstraintFolder<'_, SC>>>::eval(
                 air,
                 &mut folder,
                 lookups,

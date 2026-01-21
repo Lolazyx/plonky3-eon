@@ -95,7 +95,7 @@ pub fn verify_constraints<SC, A, PcsErr, LG>(
 where
     SC: StarkGenericConfig,
     LG: LookupGadget,
-    A: for<'a> p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
+    A: for<'a> AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
     PcsErr: core::fmt::Debug,
 {
     let sels = trace_domain.selectors_at_point(zeta);
@@ -141,7 +141,7 @@ where
     };
     // air.eval(&mut folder);
     let lookup_data = lookup_data.unwrap_or(&[]);
-    <A as p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'_, SC>>>::eval::<LG>(
+    <A as AirLookupHandler<VerifierConstraintFolder<'_, SC>>>::eval::<LG>(
         air,
         &mut folder,
         lookups,
@@ -234,8 +234,8 @@ pub fn verify<SC, A>(
 where
     SC: StarkGenericConfig,
     A: eon_air::EonAir<Val<SC>, SC::Challenge>
-        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
+        + AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
 {
     verify_with_preprocessed(config, air, proof, public_values, None)
 }
@@ -251,8 +251,8 @@ pub fn verify_with_preprocessed<SC, A>(
 where
     SC: StarkGenericConfig,
     A: eon_air::EonAir<Val<SC>, SC::Challenge>
-        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
+        + AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
 {
     let Proof {
         commitments,
@@ -286,7 +286,7 @@ where
 
     let lookup_gadget = LogUpGadget;
     let lookups =
-        <A as p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>>::get_lookups(
+        <A as AirLookupHandler<SymbolicAirBuilder<Val<SC>>>>::get_lookups(
             air,
         );
 
