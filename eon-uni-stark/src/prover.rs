@@ -1,11 +1,15 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use core::ops::Deref;
 use itertools::Itertools;
 use p3_air::Air;
 use p3_challenger::{CanObserve, FieldChallenger};
 use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{BasedVectorSpace, PackedValue, PrimeCharacteristicRing};
+use p3_lookup::logup::LogUpGadget;
+use p3_lookup::lookup_traits::AirLookupHandler;
+use p3_lookup::lookup_traits::{Kind, Lookup, LookupData, LookupGadget};
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::dense::RowMajorMatrixView;
@@ -15,8 +19,8 @@ use tracing::{debug_span, info_span, instrument};
 
 use crate::{
     Commitments, Domain, OpenedValues, PackedChallenge, PackedVal, PreprocessedProverData, Proof,
-    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, Val,
-    get_log_quotient_degree_no_lookup, get_symbolic_constraints_no_lookup,
+    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, Val, get_log_quotient_degree,
+    get_symbolic_constraints,
 };
 
 #[instrument(skip_all)]
@@ -34,7 +38,9 @@ pub fn prove_with_preprocessed<
 ) -> Proof<SC>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
+    A: eon_air::EonAir<Val<SC>, SC::Challenge>
+        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'a, SC>>,
 {
     #[cfg(debug_assertions)]
     crate::check_constraints::check_constraints_without_lookups(air, &trace, public_values);
@@ -52,7 +58,9 @@ where
     //   callers must use `setup_preprocessed` and pass the resulting data in.
     let preprocessed_width = preprocessed.map_or_else(
         || {
-            if let Some(preprocessed_trace) = air.preprocessed_trace() {
+            if let Some(preprocessed_trace) =
+                <A as p3_air::BaseAir<Val<SC>>>::preprocessed_trace(air)
+            {
                 let width = preprocessed_trace.width();
                 if width > 0 {
                     panic!(
@@ -80,13 +88,25 @@ where
         },
     );
 
+    let lookup_gadget = LogUpGadget;
+    let lookups =
+        <A as p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>>::get_lookups(
+            air,
+        );
+
+    let permutation_width = lookups.len() * lookup_gadget.num_aux_cols();
+    let num_randomness = lookups.len() * lookup_gadget.num_challenges();
+    let has_lookups = !lookups.is_empty();
+
     // Compute the constraint polynomials as vectors of symbolic expressions.
     // let symbolic_constraints =
     //     get_symbolic_constraints(air, preprocessed_width, public_values.len(), 0, 0);
-    let symbolic_constraints = get_symbolic_constraints_no_lookup::<Val<SC>, A>(
+    let symbolic_constraints = get_symbolic_constraints(
         air,
         preprocessed_width,
         public_values.len(),
+        permutation_width,
+        num_randomness,
     );
 
     // Count the number of constraints that we have.
@@ -131,11 +151,13 @@ where
     //     public_values.len(),
     //     config.is_zk(),
     // );
-    let log_quotient_degree = get_log_quotient_degree_no_lookup::<Val<SC>, A>(
+    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, SC::Challenge, _>(
         air,
         preprocessed_width,
         public_values.len(),
         config.is_zk(),
+        permutation_width,
+        num_randomness,
     );
 
     // let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
@@ -153,6 +175,8 @@ where
     // When ZK is enabled, we need to use an extended domain of size `2N` as we will
     // add random values to the trace.
     let ext_trace_domain = pcs.natural_domain_for_degree(degree * (config.is_zk() + 1));
+
+    let trace_for_lookup = trace.clone();
 
     // Let `g` denote a generator of the multiplicative group of `F` and `H'` the unique
     // subgroup of `F` of size `N << (pcs.config.log_blowup + config.is_zk())`.
@@ -186,6 +210,64 @@ where
 
     // Observe the public input values.
     challenger.observe_slice(public_values);
+
+    // --- [LOOKUP] sample permutation challenges + build permutation trace ---
+    let (permutation_challenges, permutation_trace, mut lookup_data) = if has_lookups {
+        // 1) sample permutation challenges (extension-field challenges)
+        //    Count must match: lookups.len() * num_challenges()
+        let permutation_challenges: Vec<SC::Challenge> = (0..num_randomness)
+            .map(|_| challenger.sample_algebra_element())
+            .collect();
+
+        // 2) get preprocessed rows if needed (base-field matrix)
+        //    generate_permutation needs base-field preprocessed rows (optional)
+        let preprocessed_matrix: Option<RowMajorMatrix<Val<SC>>> = if preprocessed_width == 0 {
+            None
+        } else {
+            <A as p3_air::BaseAir<Val<SC>>>::preprocessed_trace(&*air)
+        };
+
+        let preprocessed_view = preprocessed_matrix.as_ref().map(|m| m.as_view());
+
+        // 3) prepare lookup_data (only meaningful for GLOBAL lookups; otherwise can be empty)
+        let num_global = lookups
+            .iter()
+            .filter(|l| matches!(l.kind, Kind::Global(_)))
+            .count();
+
+        let mut lookup_data: Vec<p3_lookup::lookup_traits::LookupData<SC::Challenge>> =
+            vec![LookupData::<SC::Challenge>::default(); num_global];
+
+        // 4) IMPORTANT: generate_permutation needs the *base-field* main trace
+        //    because it constructs running sums row by row
+        //    (so you must keep a copy before pcs.commit moves `trace`)
+        let permutation_trace = lookup_gadget.generate_permutation::<SC>(
+            &trace_for_lookup,    // base-field main trace matrix
+            &preprocessed_matrix, // optional base-field preprocessed rows
+            public_values,
+            &lookups,
+            &mut lookup_data,
+            &permutation_challenges,
+        );
+
+        (permutation_challenges, Some(permutation_trace), lookup_data)
+    } else {
+        (Vec::new(), None, Vec::new())
+    };
+
+    let (perm_commit_opt, perm_data_opt) = if let Some(perm_trace_ef) = permutation_trace {
+        let perm_trace_base = perm_trace_ef.flatten_to_base();
+
+        // 1) commit permutation trace on the same domain as trace commitment
+        let (perm_commit, perm_data) = pcs.commit([(ext_trace_domain, perm_trace_base)]);
+
+        // 2) bind it into transcript BEFORE sampling alpha
+        challenger.observe(perm_commit.clone());
+
+        (Some(perm_commit), Some(perm_data))
+    } else {
+        (None, None)
+    };
 
     // Get the first Fiat Shamir challenge which will be used to combine all constraint polynomials
     // into a single polynomial.
@@ -223,6 +305,11 @@ where
     // This only works if the trace domain is `gH'` and the quotient domain is `gK` for some subgroup `K` contained in `H'`.
     // TODO: Make this explicit in `get_evaluations_on_domain` or otherwise fix this.
     let trace_on_quotient_domain = pcs.get_evaluations_on_domain(&trace_data, 0, quotient_domain);
+
+    let permutation_on_quotient_domain = perm_data_opt
+        .as_ref()
+        .map(|perm_data| pcs.get_evaluations_on_domain(perm_data, 0, quotient_domain));
+
     let preprocessed_on_quotient_domain =
         preprocessed_data_ref.map(|data| pcs.get_evaluations_on_domain(data, 0, quotient_domain));
 
@@ -233,9 +320,11 @@ where
     let quotient_values = quotient_values(
         air,
         public_values,
+        &permutation_challenges,
         trace_domain,
         quotient_domain,
         &trace_on_quotient_domain,
+        permutation_on_quotient_domain.as_ref(),
         preprocessed_on_quotient_domain.as_ref(),
         alpha,
         constraint_count,
@@ -293,6 +382,7 @@ where
     // will be passed to the verifier.
     let commitments = Commitments {
         trace: trace_commit,
+        permutation: perm_commit_opt.clone(),
         quotient_chunks: quotient_commit,
         random: opt_r_commit.clone(),
     };
@@ -318,44 +408,85 @@ where
         .expect("domain should support next_point operation");
 
     let is_random = opt_r_data.is_some();
+    let has_perm = perm_data_opt.is_some();
+
     let (opened_values, opening_proof) = info_span!("open").in_scope(|| {
         let round0 = opt_r_data.as_ref().map(|r_data| (r_data, vec![vec![zeta]]));
         let round1 = (&trace_data, vec![vec![zeta, zeta_next]]);
+        let round_perm = perm_data_opt
+            .as_ref()
+            .map(|perm_data| (perm_data, vec![vec![zeta, zeta_next]]));
         let round2 = (&quotient_data, vec![vec![zeta]; num_quotient_chunks]); // open every chunk at zeta
         let round3 = preprocessed_data_ref.map(|data| (data, vec![vec![zeta, zeta_next]]));
 
         let rounds = round0
             .into_iter()
-            .chain([round1, round2])
+            .chain([round1])
+            .chain(round_perm)
+            .chain([round2])
             .chain(round3)
             .collect();
 
         pcs.open(rounds, &mut challenger)
     });
-    let trace_idx = SC::Pcs::TRACE_IDX;
-    let quotient_idx = SC::Pcs::QUOTIENT_IDX;
+
+    let mut idx = 0usize;
+    let random_idx = if is_random {
+        let i = idx;
+        idx += 1;
+        Some(i)
+    } else {
+        None
+    };
+    let trace_idx = idx;
+    idx += 1;
+    let perm_idx = if has_perm {
+        let i = idx;
+        idx += 1;
+        Some(i)
+    } else {
+        None
+    };
+    let quotient_idx = idx;
+    idx += 1;
+    let preprocessed_idx = if preprocessed_width > 0 {
+        let i = idx;
+        idx += 1;
+        Some(i)
+    } else {
+        None
+    };
+
+    // trace openings
     let trace_local = opened_values[trace_idx][0][0].clone();
     let trace_next = opened_values[trace_idx][0][1].clone();
+
+    // permutation openings (optional)
+    let permutation_local = perm_idx.map(|i| opened_values[i][0][0].clone());
+    let permutation_next = perm_idx.map(|i| opened_values[i][0][1].clone());
+
+    // quotient openings
     let quotient_chunks = opened_values[quotient_idx]
         .iter()
         .map(|v| v[0].clone())
         .collect_vec();
-    let random = if is_random {
-        Some(opened_values[0][0][0].clone())
-    } else {
-        None
-    };
-    let (preprocessed_local, preprocessed_next) = if preprocessed_width > 0 {
+    let random = random_idx.map(|i| opened_values[i][0][0].clone());
+
+    let (preprocessed_local, preprocessed_next) = if let Some(i) = preprocessed_idx {
         (
-            Some(opened_values[SC::Pcs::PREPROCESSED_TRACE_IDX][0][0].clone()),
-            Some(opened_values[SC::Pcs::PREPROCESSED_TRACE_IDX][0][1].clone()),
+            Some(opened_values[i][0][0].clone()),
+            Some(opened_values[i][0][1].clone()),
         )
     } else {
         (None, None)
     };
+
     let opened_values = OpenedValues {
         trace_local,
         trace_next,
+        permutation_local,
+        permutation_next,
+
         preprocessed_local,
         preprocessed_next,
         quotient_chunks,
@@ -383,7 +514,9 @@ pub fn prove<
 ) -> Proof<SC>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
+    A: eon_air::EonAir<Val<SC>, SC::Challenge>
+        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<ProverConstraintFolder<'a, SC>>,
 {
     prove_with_preprocessed::<SC, A>(config, air, trace, public_values, None)
 }
@@ -391,12 +524,14 @@ where
 #[instrument(skip_all)]
 // TODO: Group some arguments to remove the `allow`?
 #[allow(clippy::too_many_arguments)]
-pub fn quotient_values<SC, A, Mat>(
+pub fn quotient_values<SC, A, Mat, PermMat>(
     air: &A,
     public_values: &[Val<SC>],
+    perm_challenges: &[SC::Challenge],
     trace_domain: Domain<SC>,
     quotient_domain: Domain<SC>,
     trace_on_quotient_domain: &Mat,
+    permutation_on_quotient_domain: Option<&PermMat>,
     preprocessed_on_quotient_domain: Option<&Mat>,
     alpha: SC::Challenge,
     constraint_count: usize,
@@ -405,6 +540,7 @@ where
     SC: StarkGenericConfig,
     A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
     Mat: Matrix<Val<SC>> + Sync,
+    PermMat: Matrix<Val<SC>> + Sync,
 {
     let quotient_size = quotient_domain.size();
     let width = trace_on_quotient_domain.width();
@@ -461,13 +597,66 @@ where
 
             let accumulator = PackedChallenge::<SC>::ZERO;
 
-            // placeholder
-            let perm_mat_opt: Option<RowMajorMatrix<PackedChallenge<SC>>> = None;
-            let permutation: RowMajorMatrixView<'_, PackedChallenge<SC>> = perm_mat_opt
-                .as_ref()
-                .map(|m| m.as_view())
-                .unwrap_or_else(|| RowMajorMatrixView::new_row(&[]));
-            let permutation_challenges: Vec<PackedChallenge<SC>> = Vec::new();
+            let d = <SC::Challenge as BasedVectorSpace<Val<SC>>>::DIMENSION;
+
+            // 1) permutation challenges：SC::Challenge -> PackedChallenge
+            let permutation_challenges: Vec<PackedChallenge<SC>> = perm_challenges
+                .iter()
+                .map(|ch| {
+                    let coeffs = ch.as_basis_coefficients_slice();
+                    PackedChallenge::<SC>::from_basis_coefficients_fn(|k| {
+                        PackedVal::<SC>::from_fn(|_| coeffs[k])
+                    })
+                })
+                .collect();
+
+            // 2) permutation matrix：从 base-field “flatten” 形态重组回 PackedChallenge
+            let mut perm_mat_opt: Option<RowMajorMatrix<PackedChallenge<SC>>> = None;
+
+            let permutation: RowMajorMatrixView<'_, PackedChallenge<SC>> =
+                if let Some(perm_base) = permutation_on_quotient_domain {
+                    let perm_base_width = perm_base.width();
+                    debug_assert!(
+                        perm_base_width % d == 0,
+                        "permutation_on_quotient_domain.width() must be a multiple of extension degree D"
+                    );
+                    let perm_width = perm_base_width / d;
+
+                    // 先把 base-field perm matrix 做 (local,next) 两行 + packed lanes
+                    let perm_base_pair = RowMajorMatrix::<PackedVal<SC>>::new(
+                        perm_base.vertically_packed_row_pair(i_start, next_step),
+                        perm_base_width,
+                    );
+
+                    // 再每 D 列合并成 1 列 PackedChallenge
+                    let mut perm_pair = Vec::with_capacity(2 * perm_width);
+                    for row in 0..2 {
+                        let row_storage = perm_base_pair
+                            .row_slice(row)
+                            .expect("permutation base matrix should provide contiguous row slice");
+                    let row_slice: &[PackedVal<SC>] = row_storage.deref();
+
+                    for col in 0..perm_width {
+                        let start = col * d;
+
+                        let mut coeffs: Vec<PackedVal<SC>> = Vec::with_capacity(d);
+                        for k in 0..d {
+                            coeffs.push(row_slice[start + k]);
+                        }
+
+                        perm_pair.push(PackedChallenge::<SC>::from_basis_coefficients_fn(move |k| {
+                            coeffs[k]
+                        }));
+                    }
+                }
+
+
+                    perm_mat_opt = Some(RowMajorMatrix::new(perm_pair, perm_width));
+                    perm_mat_opt.as_ref().unwrap().as_view()
+                } else {
+                    RowMajorMatrixView::new_row(&[])
+                };
+
 
             let mut folder = ProverConstraintFolder {
                 main: main.as_view(),

@@ -3,6 +3,11 @@
 use alloc::vec::Vec;
 use alloc::{format, vec};
 
+use crate::symbolic_builder::{SymbolicAirBuilder, get_log_quotient_degree};
+use crate::{
+    Domain, PcsError, PreprocessedVerifierKey, Proof, StarkGenericConfig, Val,
+    VerifierConstraintFolder,
+};
 use itertools::Itertools;
 use p3_air::Air;
 use p3_challenger::{CanObserve, FieldChallenger};
@@ -10,18 +15,13 @@ use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing};
 use p3_lookup::logup::LogUpGadget;
 use p3_lookup::lookup_traits::AirLookupHandler;
+use p3_lookup::lookup_traits::LookupGadget;
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use p3_matrix::stack::ViewPair;
 use p3_util::zip_eq::zip_eq;
 use thiserror::Error;
 use tracing::instrument;
-
-use crate::symbolic_builder::{SymbolicAirBuilder, get_log_quotient_degree_no_lookup};
-use crate::{
-    Domain, PcsError, PreprocessedVerifierKey, Proof, StarkGenericConfig, Val,
-    VerifierConstraintFolder,
-};
 
 /// Recomposes the quotient polynomial from its chunks evaluated at a point.
 ///
@@ -211,7 +211,9 @@ pub fn verify<SC, A>(
 ) -> Result<(), VerificationError<PcsError<SC>>>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    A: eon_air::EonAir<Val<SC>, SC::Challenge>
+        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
 {
     verify_with_preprocessed(config, air, proof, public_values, None)
 }
@@ -226,7 +228,9 @@ pub fn verify_with_preprocessed<SC, A>(
 ) -> Result<(), VerificationError<PcsError<SC>>>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    A: eon_air::EonAir<Val<SC>, SC::Challenge>
+        + p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> p3_lookup::lookup_traits::AirLookupHandler<VerifierConstraintFolder<'a, SC>>,
 {
     let Proof {
         commitments,
@@ -258,11 +262,22 @@ where
     // );
     // let num_quotient_chunks = 1 << (log_num_quotient_chunks + config.is_zk());
 
-    let log_quotient_degree = get_log_quotient_degree_no_lookup::<Val<SC>, A>(
+    let lookup_gadget = LogUpGadget;
+    let lookups =
+        <A as p3_lookup::lookup_traits::AirLookupHandler<SymbolicAirBuilder<Val<SC>>>>::get_lookups(
+            air,
+        );
+
+    let permutation_width = lookups.len() * lookup_gadget.num_aux_cols();
+    let num_randomness = lookups.len() * lookup_gadget.num_challenges();
+
+    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, SC::Challenge, _>(
         air,
         preprocessed_width,
         public_values.len(),
         config.is_zk(),
+        permutation_width,
+        num_randomness,
     );
     let num_quotient_chunks = 1 << (log_quotient_degree + config.is_zk());
 
@@ -288,7 +303,18 @@ where
         return Err(VerificationError::RandomizationError);
     }
 
-    let air_width = A::width(air);
+    let air_width = <A as p3_air::BaseAir<Val<SC>>>::width(air);
+
+    let perm_shape_ok = match (
+        commitments.permutation.is_some(),
+        opened_values.permutation_local.as_ref(),
+        opened_values.permutation_next.as_ref(),
+    ) {
+        (false, None, None) => true,
+        (true, Some(pl), Some(pn)) => pl.len() == pn.len(),
+        _ => false,
+    };
+
     let valid_shape = opened_values.trace_local.len() == air_width
         && opened_values.trace_next.len() == air_width
         && opened_values.quotient_chunks.len() == num_quotient_chunks
@@ -297,7 +323,8 @@ where
             .iter()
             .all(|qc| qc.len() == SC::Challenge::DIMENSION)
         // We've already checked that opened_values.random is present if and only if ZK is enabled.
-        && opened_values.random.as_ref().is_none_or(|r_comm| r_comm.len() == SC::Challenge::DIMENSION);
+        && opened_values.random.as_ref().is_none_or(|r_comm| r_comm.len() == SC::Challenge::DIMENSION)
+        && perm_shape_ok;
     if !valid_shape {
         return Err(VerificationError::InvalidProofShape);
     }
@@ -314,6 +341,9 @@ where
     challenger.observe(commitments.trace.clone());
     if preprocessed_width > 0 {
         challenger.observe(preprocessed_commit.as_ref().unwrap().clone());
+    }
+    if let Some(perm_commit) = commitments.permutation.clone() {
+        challenger.observe(perm_commit);
     }
     challenger.observe_slice(public_values);
 
@@ -351,29 +381,49 @@ where
     } else {
         vec![]
     };
-    coms_to_verify.extend(vec![
-        (
-            commitments.trace.clone(),
+    // 1) trace commitment openings
+    coms_to_verify.push((
+        commitments.trace.clone(),
+        vec![(
+            trace_domain,
+            vec![
+                (zeta, opened_values.trace_local.clone()),
+                (zeta_next, opened_values.trace_next.clone()),
+            ],
+        )],
+    ));
+
+    // 2) permutation commitment openings (NEW, only when lookup enabled)
+    if let Some(perm_commit) = &commitments.permutation {
+        let perm_local = opened_values
+            .permutation_local
+            .as_ref()
+            .ok_or(VerificationError::InvalidProofShape)?;
+        let perm_next = opened_values
+            .permutation_next
+            .as_ref()
+            .ok_or(VerificationError::InvalidProofShape)?;
+
+        coms_to_verify.push((
+            perm_commit.clone(),
             vec![(
                 trace_domain,
-                vec![
-                    (zeta, opened_values.trace_local.clone()),
-                    (zeta_next, opened_values.trace_next.clone()),
-                ],
+                vec![(zeta, perm_local.clone()), (zeta_next, perm_next.clone())],
             )],
-        ),
-        (
-            commitments.quotient_chunks.clone(),
-            // Check the commitment on the randomized domains.
-            zip_eq(
-                randomized_quotient_chunks_domains.iter(),
-                &opened_values.quotient_chunks,
-                VerificationError::InvalidProofShape,
-            )?
-            .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
-            .collect_vec(),
-        ),
-    ]);
+        ));
+    }
+
+    // 3) quotient chunks openings
+    coms_to_verify.push((
+        commitments.quotient_chunks.clone(),
+        zip_eq(
+            randomized_quotient_chunks_domains.iter(),
+            &opened_values.quotient_chunks,
+            VerificationError::InvalidProofShape,
+        )?
+        .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
+        .collect_vec(),
+    ));
 
     // Add preprocessed commitment verification if present
     if preprocessed_width > 0 {

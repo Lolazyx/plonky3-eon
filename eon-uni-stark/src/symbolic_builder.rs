@@ -250,49 +250,49 @@ impl<F: Field> EonAirBuilder for SymbolicAirBuilder<F> {
 
 impl_p3_air_builder_traits!(SymbolicAirBuilder<F> where F: eon_air::Field + Sync);
 
-use p3_air::Air;
+// use p3_air::Air;
 
-pub fn get_symbolic_constraints_no_lookup<F, A>(
-    air: &A,
-    preprocessed_width: usize,
-    num_public_values: usize,
-) -> Vec<SymbolicExpression<F>>
-where
-    F: Field,
-    A: Air<SymbolicAirBuilder<F>>,
-{
-    let mut builder = SymbolicAirBuilder::<F>::new(
-        preprocessed_width,
-        air.width(),
-        num_public_values,
-        0, // permutation_width
-        0, // num_permutation_challenges
-    );
-    air.eval(&mut builder);
-    builder.constraints()
-}
+// pub fn get_symbolic_constraints_no_lookup<F, A>(
+//     air: &A,
+//     preprocessed_width: usize,
+//     num_public_values: usize,
+// ) -> Vec<SymbolicExpression<F>>
+// where
+//     F: Field,
+//     A: Air<SymbolicAirBuilder<F>>,
+// {
+//     let mut builder = SymbolicAirBuilder::<F>::new(
+//         preprocessed_width,
+//         air.width(),
+//         num_public_values,
+//         0, // permutation_width
+//         0, // num_permutation_challenges
+//     );
+//     air.eval(&mut builder);
+//     builder.constraints()
+// }
 
-pub fn get_log_quotient_degree_no_lookup<F, A>(
-    air: &A,
-    preprocessed_width: usize,
-    num_public_values: usize,
-    is_zk: usize,
-) -> usize
-where
-    F: Field,
-    A: Air<SymbolicAirBuilder<F>>,
-{
-    assert!(is_zk <= 1);
-    let max_deg =
-        get_symbolic_constraints_no_lookup::<F, A>(air, preprocessed_width, num_public_values)
-            .iter()
-            .map(|c| c.degree_multiple())
-            .max()
-            .unwrap_or(0);
+// pub fn get_log_quotient_degree_no_lookup<F, A>(
+//     air: &A,
+//     preprocessed_width: usize,
+//     num_public_values: usize,
+//     is_zk: usize,
+// ) -> usize
+// where
+//     F: Field,
+//     A: Air<SymbolicAirBuilder<F>>,
+// {
+//     assert!(is_zk <= 1);
+//     let max_deg =
+//         get_symbolic_constraints_no_lookup::<F, A>(air, preprocessed_width, num_public_values)
+//             .iter()
+//             .map(|c| c.degree_multiple())
+//             .max()
+//             .unwrap_or(0);
 
-    let constraint_degree = (max_deg + is_zk).max(2);
-    log2_ceil_usize(constraint_degree - 1)
-}
+//     let constraint_degree = (max_deg + is_zk).max(2);
+//     log2_ceil_usize(constraint_degree - 1)
+// }
 
 #[cfg(test)]
 mod tests {
