@@ -78,6 +78,9 @@ pub fn verify_constraints<SC, A, PcsErr>(
     air: &A,
     trace_local: &[SC::Challenge],
     trace_next: &[SC::Challenge],
+    permutation_local: Option<&[SC::Challenge]>,
+    permutation_next: Option<&[SC::Challenge]>,
+    permutation_challenges: &[SC::Challenge],
     preprocessed_local: Option<&[SC::Challenge]>,
     preprocessed_next: Option<&[SC::Challenge]>,
     public_values: &[Val<SC>],
@@ -106,13 +109,19 @@ where
         _ => None,
     };
 
-    // placeholder
     let empty_row: &[SC::Challenge] = &[];
-    let permutation = ViewPair::new(
-        RowMajorMatrixView::new_row(empty_row),
-        RowMajorMatrixView::new_row(empty_row),
-    );
-    let permutation_challenges: &[SC::Challenge] = &[];
+
+    let permutation = match (permutation_local, permutation_next) {
+        (Some(pl), Some(pn)) => ViewPair::new(
+            RowMajorMatrixView::new_row(pl),
+            RowMajorMatrixView::new_row(pn),
+        ),
+        _ => ViewPair::new(
+            RowMajorMatrixView::new_row(empty_row),
+            RowMajorMatrixView::new_row(empty_row),
+        ),
+    };
+    let permutation_challenges = permutation_challenges;
 
     let mut folder = VerifierConstraintFolder {
         main,
@@ -269,7 +278,7 @@ where
         );
 
     let permutation_width = lookups.len() * lookup_gadget.num_aux_cols();
-    let num_randomness = lookups.len() * lookup_gadget.num_challenges();
+    let num_randomness = permutation_width * lookup_gadget.num_challenges();
 
     let log_quotient_degree = get_log_quotient_degree::<Val<SC>, SC::Challenge, _>(
         air,
@@ -311,7 +320,7 @@ where
         opened_values.permutation_next.as_ref(),
     ) {
         (false, None, None) => true,
-        (true, Some(pl), Some(pn)) => pl.len() == pn.len(),
+        (true, Some(pl), Some(pn)) => pl.len() == pn.len() && pl.len() == permutation_width,
         _ => false,
     };
 
@@ -342,11 +351,20 @@ where
     if preprocessed_width > 0 {
         challenger.observe(preprocessed_commit.as_ref().unwrap().clone());
     }
+    challenger.observe_slice(public_values);
+
+    let permutation_challenges: Vec<SC::Challenge> = if commitments.permutation.is_some() {
+        (0..num_randomness)
+            .map(|_| challenger.sample_algebra_element())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // now bind permutation commitment
     if let Some(perm_commit) = commitments.permutation.clone() {
         challenger.observe(perm_commit);
     }
-    challenger.observe_slice(public_values);
-
     // Get the first Fiat Shamir challenge which will be used to combine all constraint polynomials
     // into a single polynomial.
     //
@@ -452,6 +470,9 @@ where
         air,
         &opened_values.trace_local,
         &opened_values.trace_next,
+        opened_values.permutation_local.as_deref(),
+        opened_values.permutation_next.as_deref(),
+        &permutation_challenges,
         opened_values.preprocessed_local.as_deref(),
         opened_values.preprocessed_next.as_deref(),
         public_values,
