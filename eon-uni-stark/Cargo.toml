@@ -10,30 +10,30 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+eon-air.workspace = true
+itertools.workspace = true
 p3-air.workspace = true
 p3-challenger.workspace = true
 p3-commit.workspace = true
 p3-dft.workspace = true
 p3-field.workspace = true
+p3-lookup.workspace = true
 p3-matrix.workspace = true
 p3-maybe-rayon.workspace = true
 p3-uni-stark.workspace = true
 p3-util.workspace = true
-p3-lookup.workspace = true
-eon-air.workspace = true
-itertools.workspace = true
 serde = { workspace = true, features = ["derive", "alloc"] }
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+p3-bn254.workspace = true
 p3-challenger.workspace = true
 p3-commit = { workspace = true, features = ["test-utils"] }
 p3-dft.workspace = true
 p3-keccak.workspace = true
-p3-symmetric.workspace = true
-p3-bn254.workspace = true
 p3-kzg.workspace = true
+p3-symmetric.workspace = true
 
 postcard = { workspace = true, features = ["alloc"] }
 rand.workspace = true

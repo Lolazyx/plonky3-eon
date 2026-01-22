@@ -10,25 +10,23 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+
+itertools.workspace = true
 p3-field.workspace = true
 p3-maybe-rayon.workspace = true
 p3-util.workspace = true
-
-itertools.workspace = true
 rand.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tracing.workspace = true
 transpose.workspace = true
 
 [dev-dependencies]
-# p3-baby-bear.workspace = true
-# p3-mersenne-31.workspace = true
+
+criterion.workspace = true
+# p3-baby-bear.workspace = true# p3-mersenne-31.workspace = true
 
 
 p3-bn254.workspace = true
-
-
-criterion.workspace = true
 
 [[bench]]
 name = "transpose_benchmark"

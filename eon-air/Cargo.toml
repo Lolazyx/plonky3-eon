@@ -12,5 +12,5 @@ categories.workspace = true
 [dependencies]
 p3-air = { path = "../air" }
 p3-field = { path = "../field" }
+p3-lookup = { path = "../lookup" }
 p3-matrix = { path = "../matrix" }
-p3-lookup = { path = "../lookup"}

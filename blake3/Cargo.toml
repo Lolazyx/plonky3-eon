@@ -10,10 +10,10 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-p3-symmetric.workspace = true
-p3-util.workspace = true
 
 blake3.workspace = true
+p3-symmetric.workspace = true
+p3-util.workspace = true
 
 [features]
 neon = ["blake3/neon"]

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "*" ]
+    branches: ["*"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -40,7 +40,6 @@ jobs:
           # Append AVX2 to existing flags so we keep -C debuginfo=0.
           echo "RUSTFLAGS=$RUSTFLAGS -C target-feature=${{ matrix.features }}" >> "$GITHUB_ENV"
 
-
       - name: Test
         run: cargo test
 
@@ -70,7 +69,6 @@ jobs:
       - name: Build
         run: |
           cargo build --verbose --target ${{ env.target }} -p p3-air
-          cargo build --verbose --target ${{ env.target }} -p p3-baby-bear
           cargo build --verbose --target ${{ env.target }} -p p3-blake3
           cargo build --verbose --target ${{ env.target }} -p p3-blake3-air
           cargo build --verbose --target ${{ env.target }} -p p3-bn254
@@ -80,11 +78,9 @@ jobs:
           cargo build --verbose --target ${{ env.target }} -p p3-dft
           cargo build --verbose --target ${{ env.target }} -p p3-field
           cargo build --verbose --target ${{ env.target }} -p p3-fri
-          cargo build --verbose --target ${{ env.target }} -p p3-goldilocks
           cargo build --verbose --target ${{ env.target }} -p p3-interpolation
           cargo build --verbose --target ${{ env.target }} -p p3-keccak
           cargo build --verbose --target ${{ env.target }} -p p3-keccak-air
-          cargo build --verbose --target ${{ env.target }} -p p3-koala-bear
           cargo build --verbose --target ${{ env.target }} -p p3-matrix
           cargo build --verbose --target ${{ env.target }} -p p3-maybe-rayon
           cargo build --verbose --target ${{ env.target }} -p p3-mds
@@ -122,7 +118,7 @@ jobs:
         run: cargo install cargo-sort
 
       - uses: Swatinem/rust-cache@v2
-        
+
       - name: Sort Cargo.toml
         run: cargo +stable sort --workspace --grouped --check
 

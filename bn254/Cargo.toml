@@ -10,21 +10,21 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+halo2curves = "0.9"
+
+num-bigint.workspace = true
 p3-field.workspace = true
 p3-poseidon2.workspace = true
 p3-symmetric.workspace = true
 p3-util.workspace = true
-
-num-bigint.workspace = true
 paste.workspace = true
 rand.workspace = true
 serde = { workspace = true, features = ["derive"] }
-halo2curves = "0.9"
 
 [dev-dependencies]
-p3-field-testing.workspace = true
 
 criterion.workspace = true
+p3-field-testing.workspace = true
 serde_json.workspace = true
 zkhash = { git = "https://github.com/HorizenLabs/poseidon2" }
 

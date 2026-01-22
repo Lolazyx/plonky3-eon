@@ -1,5 +1,5 @@
 use p3_field::{Field, PrimeField};
-use p3_maybe_rayon::prelude::{IntoParallelIterator, ParIterExt};
+use p3_maybe_rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use p3_symmetric::CryptographicPermutation;
 use tracing::instrument;
 
@@ -58,7 +58,7 @@ where
                 // i < F::ORDER_U64 by construction so this is safe.
                 F::from_canonical_unchecked(i)
             })
-            .find_any(|witness| self.clone().check_witness(bits, *witness))
+            .find(|witness| self.clone().check_witness(bits, *witness))
             .expect("failed to find witness");
         assert!(self.check_witness(bits, witness));
         witness

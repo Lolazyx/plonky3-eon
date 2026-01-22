@@ -24,6 +24,5 @@ tracing.workspace = true
 
 p3-bn254.workspace = true
 
-
 [lints]
 workspace = true

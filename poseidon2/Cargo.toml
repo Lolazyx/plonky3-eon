@@ -18,13 +18,13 @@ p3-util.workspace = true
 rand.workspace = true
 
 [dev-dependencies]
-# p3-baby-bear.workspace = true
-p3-bn254.workspace = true
 # p3-goldilocks.workspace = true
 # p3-koala-bear.workspace = true
 # p3-mersenne-31.workspace = true
 
 criterion.workspace = true
+# p3-baby-bear.workspace = true
+p3-bn254.workspace = true
 
 [[bench]]
 name = "poseidon2"
