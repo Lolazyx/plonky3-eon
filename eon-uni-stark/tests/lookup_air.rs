@@ -144,7 +144,9 @@ fn test_lookup_ok() {
     verify(&config, &mut air, &proof, &pis).expect("verification failed");
 }
 
+#[cfg(debug_assertions)]
 #[test]
+#[should_panic]
 fn test_lookup_bad_trace_should_fail_verifier() {
     let config = build_config();
     let trace = generate_trace_rows::<Val>(1 << 3, true); // 第 0 行 val=1，table=0
@@ -154,6 +156,13 @@ fn test_lookup_bad_trace_should_fail_verifier() {
     let proof = prove(&config, &mut air, trace, &pis);
 
     assert!(verify(&config, &mut air, &proof, &pis).is_err());
+}
+
+#[cfg(not(debug_assertions))]
+#[test]
+fn test_lookup_bad_trace_should_fail_verifier() {
+    let proof = prove(&config, &mut air, bad_trace, &public_values);
+    assert!(!verify(&config, &air, &proof, &public_values));
 }
 
 #[test]

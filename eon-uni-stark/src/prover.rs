@@ -18,16 +18,17 @@ use p3_util::log2_strict_usize;
 use tracing::{debug_span, info_span, instrument};
 
 use crate::{
-    Commitments, Domain, OpenedValues, PackedChallenge, PackedVal, PreprocessedProverData, Proof,
-    ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder, Val, check_constraints,
-    get_log_quotient_degree, get_symbolic_constraints,
+    Commitments, DebugConstraintBuilder, Domain, OpenedValues, PackedChallenge, PackedVal,
+    PreprocessedProverData, Proof, ProverConstraintFolder, StarkGenericConfig, SymbolicAirBuilder,
+    Val, check_constraints, get_log_quotient_degree, get_symbolic_constraints,
 };
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
 pub fn prove_with_preprocessed<
     SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
+    #[cfg(debug_assertions)] A: for<'a> p3_air::Air<check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>
+        + for<'a> AirLookupHandler<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
     #[cfg(not(debug_assertions))] A,
 >(
     config: &SC,
@@ -247,6 +248,20 @@ where
     } else {
         (Vec::new(), None, Vec::new())
     };
+
+    #[cfg(debug_assertions)]
+    if config.is_zk() == 0 {
+        check_constraints::<Val<SC>, SC::Challenge, A, _>(
+            air,
+            &trace_for_lookup,
+            permutation_trace.as_ref(),
+            &permutation_challenges,
+            public_values,
+            &lookups,
+            &lookup_data,
+            &lookup_gadget,
+        );
+    }
 
     let (perm_commit_opt, perm_data_opt) = if let Some(perm_trace_ef) = permutation_trace {
         let perm_trace_base = perm_trace_ef.flatten_to_base();
@@ -500,7 +515,8 @@ where
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
 pub fn prove<
     SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
+    #[cfg(debug_assertions)] A: for<'a> p3_air::Air<check_constraints::DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>
+        + for<'a> AirLookupHandler<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
     #[cfg(not(debug_assertions))] A,
 >(
     config: &SC,
@@ -620,13 +636,11 @@ where
                     );
                     let perm_width = perm_base_width / d;
 
-                    // 先把 base-field perm matrix 做 (local,next) 两行 + packed lanes
                     let perm_base_pair = RowMajorMatrix::<PackedVal<SC>>::new(
                         perm_base.vertically_packed_row_pair(i_start, next_step),
                         perm_base_width,
                     );
 
-                    // 再每 D 列合并成 1 列 PackedChallenge
                     let mut perm_pair = Vec::with_capacity(2 * perm_width);
                     for row in 0..2 {
                         let row_storage = perm_base_pair

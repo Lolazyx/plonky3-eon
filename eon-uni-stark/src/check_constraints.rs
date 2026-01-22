@@ -1,7 +1,7 @@
 use eon_air::impl_p3_air_builder_traits;
-use eon_air::{EonAir, EonAirBuilder};
-use p3_field::{BasedVectorSpace, ExtensionField, Field};
-use p3_lookup::lookup_traits::{AirLookupHandler, Lookup, LookupData};
+use eon_air::{EonAir, EonAirBuilder, Field};
+use p3_field::{BasedVectorSpace, ExtensionField};
+use p3_lookup::lookup_traits::{AirLookupHandler, Lookup, LookupData, LookupGadget};
 use p3_matrix::Matrix;
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::ViewPair;
@@ -33,7 +33,7 @@ pub(crate) fn check_constraints<F, EF, A, LG>(
     EF: ExtensionField<F> + BasedVectorSpace<F>,
     A: EonAir<F, EF>,
     for<'a> A: AirLookupHandler<DebugConstraintBuilder<'a, F, EF>>,
-    LG: p3_lookup::lookup_traits::LookupGadget,
+    LG: LookupGadget,
 {
     let height = main.height();
     let preprocessed = <A as EonAir<F, EF>>::preprocessed_trace(&*air);
